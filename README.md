@@ -23,9 +23,37 @@
 在项目目录运行任意静态文件服务器，例如：
 
 ```bash
+npm run preview
+```
+
+或：
+
+```bash
 python3 -m http.server 4173 --directory dist
 ```
 
-然后打开 `http://127.0.0.1:4173/`。
+然后打开 `http://127.0.0.1:4173/cloud-altas/`。
 
-项目入口为 `dist/index.html`，体积云渲染器位于 `dist/cloud-renderer.js`。
+用 Wrangler 模拟线上路由：
+
+```bash
+npm install
+npm run dev
+```
+
+然后打开 `http://127.0.0.1:8787/cloud-altas/`。
+
+项目入口为 `dist/cloud-altas/index.html`，体积云渲染器位于 `dist/cloud-altas/cloud-renderer.js`。
+
+## 部署
+
+Cloudflare Workers 静态资源（Worker 名 `cloud-altas`），路由 `www.doooit.me/cloud-altas*`，线上地址：
+
+[https://www.doooit.me/cloud-altas](https://www.doooit.me/cloud-altas)
+
+```bash
+npm install
+npm run deploy
+```
+
+首次部署需要本机已登录 Wrangler（`npx wrangler login`）或设置 `CLOUDFLARE_API_TOKEN`。在 Cloudflare Dashboard 把本仓库接到该 Worker 的 Workers Builds 后，推送到 `main` 会自动部署（无需额外 build command，deploy command 用默认的 `npx wrangler deploy` 即可）。
