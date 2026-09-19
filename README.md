@@ -5,7 +5,6 @@
 - 积雨云（Cumulonimbus）
 - 层积云（Stratocumulus）
 - 卷云（Cirrus）
-- 卷积云（Cirrocumulus）
 - 高积云（Altocumulus）
 - 高层云（Altostratus）
 - 雨层云（Nimbostratus）

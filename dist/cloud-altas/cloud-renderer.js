@@ -49,16 +49,6 @@
       float ribbonB = 0.075 - abs(qB.y - 0.58 + sin(qB.x * 0.86) * 0.10) - abs(qB.z) * 0.065;
       envelope = max(ribbonA, ribbonB);
       envelope -= max(abs(p.x) - 3.15, 0.0) * 0.48;
-    } else if (cloudType < 1.5) {
-      vec2 grid = vec2(0.78, 0.62);
-      vec2 cellId = floor((p.xz + grid * 0.5) / grid);
-      vec2 local = mod(p.xz + grid * 0.5, grid) - grid * 0.5;
-      float randomA = hash13(vec3(cellId, 1.7));
-      float randomB = hash13(vec3(cellId + vec2(7.1, 3.4), 2.3));
-      vec3 q = vec3(local.x + (randomA - 0.5) * 0.14, p.y + (randomB - 0.5) * 0.12, local.y);
-      envelope = ellipsoid(q, vec3(0.0, 0.52, 0.0), vec3(0.24 + randomA * 0.09, 0.085 + randomB * 0.045, 0.22 + randomB * 0.08));
-      envelope -= max(abs(p.x) - 2.95, 0.0) * 0.72;
-      envelope -= max(abs(p.z) - 1.55, 0.0) * 0.55;
     } else if (cloudType < 2.5) {
       vec2 grid = vec2(1.62, 1.28);
       vec2 cellId = floor((p.xz + grid * 0.5) / grid);
@@ -122,7 +112,6 @@
     density *= smoothstep(-0.22, 0.08, envelope + edgeNoise * 0.52);
     float typeDensity = 1.0;
     if (cloudType < 0.5) typeDensity = 0.56;
-    else if (cloudType < 1.5) typeDensity = 0.64;
     else if (cloudType < 2.5) typeDensity = 0.84;
     else if (cloudType < 3.5) typeDensity = 0.42;
     else if (cloudType < 4.5) typeDensity = 1.18;
@@ -169,9 +158,6 @@
     if (cloudType < 0.5) {
       skyAmbient = vec3(0.94, 0.97, 1.0);
       typeSunlight = 1.24;
-    } else if (cloudType < 1.5) {
-      skyAmbient = vec3(0.90, 0.94, 0.99);
-      typeSunlight = 1.14;
     } else if (cloudType < 2.5) {
       skyAmbient = vec3(0.82, 0.87, 0.93);
       typeSunlight = 1.02;
@@ -185,8 +171,9 @@
     float cosTheta = dot(rayDirection, lightDirection);
     float phase = cloudPhase(cosTheta) * 7.0;
 
-    float nearDistance = 2.05;
-    float farDistance = 9.20;
+    float camDist = 5.65 * zoom * framing;
+    float nearDistance = max(0.24, camDist - 3.9);
+    float farDistance = camDist + 4.8;
     float baseStep = (farDistance - nearDistance) / 56.0;
     float jitter = hash13(vec3(gl_FragCoord.xy, mod(time, 19.0)));
     float travel = nearDistance + baseStep * jitter;
