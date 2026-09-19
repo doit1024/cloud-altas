@@ -204,11 +204,11 @@
       shaped += (micro2 - 0.5) * mix(0.02, 0.05, heightBlend) * (1.0 - env);
     }
 
-    float threshold = mix(0.33, 0.032, coverage);
-    float softness = mix(0.040, 0.022, saturate(quality + 0.15));
+    float threshold = mix(0.36, 0.068, coverage);
+    float softness = mix(0.038, 0.020, saturate(quality + 0.15));
     float density = smoothstep(threshold, threshold + softness, shaped);
     density *= smoothstep(-0.05, 0.02, displaced);
-    return density * mix(0.72, 1.16, coverage) * typeDensityMul();
+    return density * mix(0.70, 1.04, coverage) * typeDensityMul();
   }
 
   float henyeyGreenstein(float g, float cosTheta) {
