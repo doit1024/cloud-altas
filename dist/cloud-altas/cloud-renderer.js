@@ -167,17 +167,17 @@
     float worleyFbm = coarse.g * 0.50 + coarse.b * 0.32 + coarse.a * 0.18;
 
     if (cloudType < 0.5) {
-      float filament = coarse.r * 0.42 + coarse.g * 0.58;
-      float shaped = envelope * 2.55 + (filament - 0.34) * 0.62;
+      float filament = coarse.r * 0.38 + coarse.g * 0.62;
+      float shaped = envelope * 3.35 + (filament - 0.28) * 0.85;
       if (detail) {
-        shaped += (valueNoise3(vec3(p.x * 0.75, p.y * 6.4, p.z * 4.8) + wind * 2.0) - 0.5) * 0.16;
+        shaped += (valueNoise3(vec3(p.x * 0.70, p.y * 6.0, p.z * 4.6) + wind * 2.0) - 0.5) * 0.20;
       }
-      float density = smoothstep(-0.015, 0.075, shaped);
-      density *= smoothstep(-0.07, 0.025, envelope);
-      return density * mix(0.70, 1.08, coverage);
+      float density = smoothstep(-0.04, 0.055, shaped);
+      density *= smoothstep(-0.09, 0.02, envelope);
+      return density * mix(0.92, 1.28, coverage);
     }
 
-    float displaced = envelope + (coarse.r - 0.5) * 0.30 + (worleyFbm - 0.52) * 0.24;
+    float displaced = envelope + (coarse.r - 0.5) * 0.40 + (worleyFbm - 0.50) * 0.32;
     if (detail) {
       displaced += (valueNoise3(p * 7.6 + wind * 3.2) - 0.5) * 0.07;
     }
@@ -207,7 +207,7 @@
     float threshold = mix(0.33, 0.032, coverage);
     float softness = mix(0.040, 0.022, saturate(quality + 0.15));
     float density = smoothstep(threshold, threshold + softness, shaped);
-    density *= smoothstep(-0.10, 0.04, displaced);
+    density *= smoothstep(-0.05, 0.02, displaced);
     return density * mix(0.72, 1.16, coverage) * typeDensityMul();
   }
 
@@ -294,23 +294,23 @@
       if (density > 0.006) {
         insideCloud = true;
         float lightVisibility = lightTransmittance(samplePosition, lightDirection);
-        float localOcclusion = densityAt(samplePosition + lightDirection * 0.11, false);
-        float belly = densityAt(samplePosition + vec3(-0.03, -0.22, 0.04), false);
-        float above = densityAt(samplePosition + vec3(0.0, 0.16, 0.0), false);
+        float dR = densityAt(samplePosition + vec3(0.10, 0.0, 0.0), false);
+        float dU = densityAt(samplePosition + vec3(0.0, 0.10, 0.0), false);
+        float dF = densityAt(samplePosition + vec3(0.0, 0.0, 0.10), false);
+        vec3 gradient = vec3(dR - density, dU - density, dF - density);
+        float gradLen = max(length(gradient), 1e-4);
+        vec3 normal = normalize(mix(vec3(0.12, 1.0, 0.08), -gradient / gradLen, saturate(gradLen * 7.5)));
         vec4 puff = texture(noiseVolume, noiseCoord(samplePosition, vec3(time * 0.0115, time * 0.0018, time * 0.0009)));
-        float surfaceLight = mix(0.24, 1.12, exp(-localOcclusion * 2.35));
-        float bellyShadow = exp(-belly * 1.85);
         float heightFrac = saturate((samplePosition.y + 0.95) / 2.45);
         float powder = 1.0 - exp(-density * 2.9);
-        float silver = pow(saturate(1.0 - lightVisibility), 0.48) * max(phase, 0.04) * mix(0.50, 0.14, density);
-        float shade = pow(saturate(lightVisibility * surfaceLight), 0.78);
-        float wrap = mix(0.18, 1.0, shade) * mix(0.50, 1.04, pow(heightFrac, 0.8)) * mix(0.76, 1.0, bellyShadow);
-        wrap *= mix(1.0, 0.82, saturate(above * 1.25));
-        wrap *= mix(0.78, 1.12, puff.g) * mix(1.0, 0.86, (1.0 - puff.a) * (1.0 - heightFrac));
+        float ndotl = saturate(dot(normal, lightDirection) * 0.62 + 0.38);
+        float silver = pow(saturate(1.0 - lightVisibility), 0.48) * max(phase, 0.04) * mix(0.55, 0.16, density);
+        float wrap = ndotl * mix(0.22, 1.05, lightVisibility) * mix(0.48, 1.06, pow(heightFrac, 0.75));
+        wrap *= mix(0.74, 1.14, puff.g) * mix(1.0, 0.84, (1.0 - puff.a) * (1.0 - heightFrac));
         vec3 lighting = mix(skyAmbient * shadowTint, sunColor, saturate(wrap * sunlight * typeSunlight));
-        lighting *= 0.90 + 0.18 * powder;
-        lighting += sunColor * silver * 0.62 * sunlight * typeSunlight;
-        lighting += sunColor * 0.12 * sunlight * typeSunlight * pow(heightFrac, 2.8) * shade;
+        lighting *= 0.88 + 0.20 * powder;
+        lighting += sunColor * silver * 0.70 * sunlight * typeSunlight;
+        lighting += sunColor * 0.10 * sunlight * typeSunlight * pow(heightFrac, 2.8) * ndotl;
         lighting = mix(lighting, accent, 0.012);
 
         float sampleAlpha = 1.0 - exp(-density * baseStep * 2.18);
