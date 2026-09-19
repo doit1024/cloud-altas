@@ -230,9 +230,9 @@
       opticalDepth += densityAt(p, false) * lightStep;
       lightStep *= 1.36;
     }
-    float beer = exp(-opticalDepth * 2.15);
-    float secondary = exp(-opticalDepth * 0.62) * 0.32;
-    return saturate(beer + secondary + 0.08);
+    float beer = exp(-opticalDepth * 1.75);
+    float secondary = exp(-opticalDepth * 0.48) * 0.40;
+    return saturate(beer + secondary + 0.18);
   }
 
   void main() {
@@ -247,29 +247,29 @@
     rayDirection.yz = rotate2d(pitch) * rayDirection.yz;
 
     vec3 lightDirection = normalize(vec3(0.72, 0.82, 0.46));
-    vec3 sunColor = vec3(1.14, 1.07, 0.97);
-    vec3 skyAmbient = vec3(0.84, 0.88, 0.96);
-    vec3 shadowTint = vec3(0.70, 0.76, 0.88);
-    float typeSunlight = 1.06;
+    vec3 sunColor = vec3(1.16, 1.12, 1.06);
+    vec3 skyAmbient = vec3(0.96, 0.97, 0.99);
+    vec3 shadowTint = vec3(0.90, 0.91, 0.94);
+    float typeSunlight = 1.12;
     if (cloudType < 0.5) {
-      skyAmbient = vec3(0.96, 0.98, 1.0);
-      shadowTint = vec3(0.88, 0.92, 0.98);
-      typeSunlight = 1.32;
+      skyAmbient = vec3(0.98, 0.99, 1.0);
+      shadowTint = vec3(0.94, 0.95, 0.98);
+      typeSunlight = 1.36;
     } else if (cloudType < 1.5) {
-      skyAmbient = vec3(0.92, 0.95, 1.0);
-      shadowTint = vec3(0.82, 0.87, 0.96);
-      typeSunlight = 1.18;
+      skyAmbient = vec3(0.97, 0.98, 1.0);
+      shadowTint = vec3(0.92, 0.94, 0.97);
+      typeSunlight = 1.22;
     } else if (cloudType < 2.5) {
-      skyAmbient = vec3(0.84, 0.88, 0.95);
-      typeSunlight = 1.06;
+      skyAmbient = vec3(0.95, 0.96, 0.99);
+      typeSunlight = 1.12;
     } else if (cloudType < 3.5) {
-      skyAmbient = vec3(0.86, 0.89, 0.93);
-      shadowTint = vec3(0.76, 0.80, 0.86);
-      typeSunlight = 0.78;
+      skyAmbient = vec3(0.94, 0.95, 0.97);
+      shadowTint = vec3(0.88, 0.89, 0.92);
+      typeSunlight = 0.88;
     } else if (cloudType < 4.5) {
-      skyAmbient = vec3(0.54, 0.60, 0.68);
-      shadowTint = vec3(0.48, 0.54, 0.62);
-      typeSunlight = 0.50;
+      skyAmbient = vec3(0.78, 0.80, 0.84);
+      shadowTint = vec3(0.72, 0.74, 0.78);
+      typeSunlight = 0.64;
     }
     float cosTheta = dot(rayDirection, lightDirection);
     float phase = cloudPhase(cosTheta);
@@ -303,15 +303,15 @@
         vec4 puff = texture(noiseVolume, noiseCoord(samplePosition, vec3(time * 0.0115, time * 0.0018, time * 0.0009)));
         float heightFrac = saturate((samplePosition.y + 0.95) / 2.45);
         float powder = 1.0 - exp(-density * 2.9);
-        float ndotl = saturate(dot(normal, lightDirection) * 0.62 + 0.38);
-        float silver = pow(saturate(1.0 - lightVisibility), 0.48) * max(phase, 0.04) * mix(0.55, 0.16, density);
-        float wrap = ndotl * mix(0.22, 1.05, lightVisibility) * mix(0.48, 1.06, pow(heightFrac, 0.75));
-        wrap *= mix(0.74, 1.14, puff.g) * mix(1.0, 0.84, (1.0 - puff.a) * (1.0 - heightFrac));
+        float ndotl = saturate(dot(normal, lightDirection) * 0.42 + 0.58);
+        float silver = pow(saturate(1.0 - lightVisibility), 0.48) * max(phase, 0.04) * mix(0.45, 0.12, density);
+        float wrap = ndotl * mix(0.52, 1.06, lightVisibility) * mix(0.78, 1.06, pow(heightFrac, 0.85));
+        wrap *= mix(0.88, 1.10, puff.g) * mix(1.0, 0.92, (1.0 - puff.a) * (1.0 - heightFrac));
         vec3 lighting = mix(skyAmbient * shadowTint, sunColor, saturate(wrap * sunlight * typeSunlight));
-        lighting *= 0.88 + 0.20 * powder;
-        lighting += sunColor * silver * 0.70 * sunlight * typeSunlight;
-        lighting += sunColor * 0.10 * sunlight * typeSunlight * pow(heightFrac, 2.8) * ndotl;
-        lighting = mix(lighting, accent, 0.012);
+        lighting *= 1.04 + 0.16 * powder;
+        lighting += sunColor * silver * 0.55 * sunlight * typeSunlight;
+        lighting += sunColor * 0.16 * sunlight * typeSunlight * pow(heightFrac, 2.4) * ndotl;
+        lighting = mix(lighting, accent, 0.008);
 
         float sampleAlpha = 1.0 - exp(-density * baseStep * 2.18);
         accumulated += transmittance * lighting * sampleAlpha;
@@ -331,9 +331,9 @@
 
     vec3 averageColor = accumulated / max(opacity, 0.001);
     averageColor = max(averageColor, 0.0);
-    averageColor = pow(averageColor, vec3(0.93));
-    vec3 color = 1.0 - exp(-averageColor * 1.34);
-    color = mix(color, color * color * (3.0 - 2.0 * color), 0.10);
+    averageColor = pow(averageColor, vec3(0.96));
+    vec3 color = 1.0 - exp(-averageColor * 1.62);
+    color = mix(color, color * color * (3.0 - 2.0 * color), 0.04);
     fragColor = vec4(color * opacity, opacity);
   }
   `;
