@@ -152,30 +152,46 @@
 
   vec3 noiseCoord(vec3 p, vec3 wind) {
     if (cloudType < 0.5) {
-      return fract(vec3(p.x * 0.145, p.y * 0.62, p.z * 0.48) + wind * vec3(1.35, 0.4, 0.55) + vec3(0.37, 0.61, 0.19));
+      return fract(vec3(p.x * 0.22, p.y * 0.52, p.z * 0.40) + wind * vec3(1.2, 0.35, 0.5) + vec3(0.37, 0.61, 0.19));
     }
     return fract(p * 0.42 + wind + vec3(0.37, 0.61, 0.19));
   }
 
   float densityAt(vec3 p, bool detail) {
     float envelope = cloudEnvelope(p);
-    if (envelope < -0.38) return 0.0;
+    if (envelope < -0.40) return 0.0;
 
     vec3 wind = vec3(time * 0.0115, time * 0.0018, time * 0.0009);
     vec4 coarse = texture(noiseVolume, noiseCoord(p, wind));
     float heightBlend = saturate((p.y + 0.85) / 2.35);
     float worleyFbm = coarse.g * 0.50 + coarse.b * 0.32 + coarse.a * 0.18;
-    float env = saturate(envelope * 1.08);
-    float erode = erosionScale();
 
-    float carve = (1.0 - worleyFbm) * mix(0.14, 0.42, heightBlend) * erode;
-    float shaped = env - carve * (1.12 - env);
-    shaped += (coarse.r - 0.50) * mix(0.34, 0.10, env);
-    shaped += pow(coarse.g, 2.0) * env * 0.12;
+    if (cloudType < 0.5) {
+      float filament = coarse.r * 0.42 + coarse.g * 0.58;
+      float shaped = envelope * 2.55 + (filament - 0.34) * 0.62;
+      if (detail) {
+        shaped += (valueNoise3(vec3(p.x * 0.75, p.y * 6.4, p.z * 4.8) + wind * 2.0) - 0.5) * 0.16;
+      }
+      float density = smoothstep(-0.015, 0.075, shaped);
+      density *= smoothstep(-0.07, 0.025, envelope);
+      return density * mix(0.70, 1.08, coverage);
+    }
+
+    float displaced = envelope + (coarse.r - 0.5) * 0.30 + (worleyFbm - 0.52) * 0.24;
+    if (detail) {
+      displaced += (valueNoise3(p * 7.6 + wind * 3.2) - 0.5) * 0.07;
+    }
+    if (displaced < -0.24) return 0.0;
+
+    float env = saturate(displaced * 1.12);
+    float erode = erosionScale();
+    float carve = (1.0 - worleyFbm) * mix(0.16, 0.46, heightBlend) * erode;
+    float shaped = env - carve * (1.14 - env);
+    shaped += pow(coarse.g, 2.0) * env * 0.11;
 
     if (cloudType > 4.5) {
       shaped *= remap(p.y, -1.05, -0.72, 0.0, 1.0);
-      shaped += (1.0 - heightBlend) * 0.04 * env;
+      shaped += (1.0 - heightBlend) * 0.035 * env;
     }
 
     if (detail) {
@@ -183,20 +199,15 @@
       float micro = valueNoise3(p * 8.4 + wind * 3.4);
       float micro2 = valueNoise3(p * 16.5 + wind * 5.0 + 4.2);
       float fineMix = mix(fine.a, 1.0 - fine.b, heightBlend);
-      float fineCarve = (1.0 - mix(fineMix, micro, 0.38)) * mix(0.04, 0.20, heightBlend) * erode;
-      shaped -= fineCarve * (1.02 - saturate(shaped));
-      shaped += (micro - 0.5) * mix(0.035, 0.09, 1.0 - env);
-      shaped += (micro2 - 0.5) * mix(0.015, 0.045, heightBlend) * (1.0 - env);
-      if (cloudType < 0.5) {
-        shaped -= (1.0 - valueNoise3(vec3(p.x * 0.85, p.y * 7.2, p.z * 5.4) + wind * 2.0)) * 0.06;
-      }
+      float fineCarve = (1.0 - mix(fineMix, micro, 0.38)) * mix(0.045, 0.22, heightBlend) * erode;
+      shaped -= fineCarve * (1.04 - saturate(shaped));
+      shaped += (micro2 - 0.5) * mix(0.02, 0.05, heightBlend) * (1.0 - env);
     }
 
-    float threshold = mix(0.34, 0.028, coverage);
-    if (cloudType < 0.5) threshold -= 0.07;
-    float softness = cloudType < 0.5 ? 0.05 : mix(0.042, 0.024, saturate(quality + 0.15));
+    float threshold = mix(0.33, 0.032, coverage);
+    float softness = mix(0.040, 0.022, saturate(quality + 0.15));
     float density = smoothstep(threshold, threshold + softness, shaped);
-    density *= smoothstep(-0.12, 0.05, envelope);
+    density *= smoothstep(-0.10, 0.04, displaced);
     return density * mix(0.72, 1.16, coverage) * typeDensityMul();
   }
 
@@ -219,10 +230,9 @@
       opticalDepth += densityAt(p, false) * lightStep;
       lightStep *= 1.36;
     }
-    float beer = exp(-opticalDepth * 1.85);
-    float secondary = exp(-opticalDepth * 0.55) * 0.38;
-    float bounce = 0.14;
-    return saturate(beer + secondary + bounce);
+    float beer = exp(-opticalDepth * 2.15);
+    float secondary = exp(-opticalDepth * 0.62) * 0.32;
+    return saturate(beer + secondary + 0.08);
   }
 
   void main() {
@@ -237,10 +247,10 @@
     rayDirection.yz = rotate2d(pitch) * rayDirection.yz;
 
     vec3 lightDirection = normalize(vec3(0.72, 0.82, 0.46));
-    vec3 sunColor = vec3(1.16, 1.08, 0.96);
-    vec3 skyAmbient = vec3(0.86, 0.90, 0.97);
-    vec3 shadowTint = vec3(0.74, 0.80, 0.90);
-    float typeSunlight = 1.08;
+    vec3 sunColor = vec3(1.14, 1.07, 0.97);
+    vec3 skyAmbient = vec3(0.84, 0.88, 0.96);
+    vec3 shadowTint = vec3(0.70, 0.76, 0.88);
+    float typeSunlight = 1.06;
     if (cloudType < 0.5) {
       skyAmbient = vec3(0.96, 0.98, 1.0);
       shadowTint = vec3(0.88, 0.92, 0.98);
@@ -287,24 +297,23 @@
         float localOcclusion = densityAt(samplePosition + lightDirection * 0.11, false);
         float belly = densityAt(samplePosition + vec3(-0.03, -0.22, 0.04), false);
         float above = densityAt(samplePosition + vec3(0.0, 0.16, 0.0), false);
-        float surfaceLight = mix(0.42, 1.14, exp(-localOcclusion * 2.1));
-        float bellyShadow = exp(-belly * 1.55);
+        vec4 puff = texture(noiseVolume, noiseCoord(samplePosition, vec3(time * 0.0115, time * 0.0018, time * 0.0009)));
+        float surfaceLight = mix(0.24, 1.12, exp(-localOcclusion * 2.35));
+        float bellyShadow = exp(-belly * 1.85);
         float heightFrac = saturate((samplePosition.y + 0.95) / 2.45);
-        float ambientHeight = mix(0.58, 1.08, pow(heightFrac, 0.85));
-        float powder = 1.0 - exp(-density * 2.8);
-        float beerPowder = 1.0 - exp(-max(1.0 - lightVisibility, density) * 1.8);
-        float silver = pow(saturate(1.0 - lightVisibility), 0.50) * max(phase, 0.04) * mix(0.42, 0.12, density);
-
-        vec3 ambient = skyAmbient * shadowTint * (0.48 + 0.22 * powder) * ambientHeight * mix(0.78, 1.0, bellyShadow);
-        ambient *= mix(1.0, 0.84, saturate(above * 1.2));
-        float sunAmt = sunlight * typeSunlight * mix(0.28, 1.08, saturate(lightVisibility * surfaceLight));
-        vec3 lighting = ambient + skyAmbient * 0.16;
-        lighting += sunColor * sunAmt * (1.58 + phase * 0.92) * mix(0.86, 1.10, beerPowder);
-        lighting += sunColor * silver * 0.55 * sunlight * typeSunlight;
-        lighting += sunColor * 0.22 * sunlight * typeSunlight * pow(heightFrac, 2.6) * mix(0.45, 1.0, lightVisibility);
+        float powder = 1.0 - exp(-density * 2.9);
+        float silver = pow(saturate(1.0 - lightVisibility), 0.48) * max(phase, 0.04) * mix(0.50, 0.14, density);
+        float shade = pow(saturate(lightVisibility * surfaceLight), 0.78);
+        float wrap = mix(0.18, 1.0, shade) * mix(0.50, 1.04, pow(heightFrac, 0.8)) * mix(0.76, 1.0, bellyShadow);
+        wrap *= mix(1.0, 0.82, saturate(above * 1.25));
+        wrap *= mix(0.78, 1.12, puff.g) * mix(1.0, 0.86, (1.0 - puff.a) * (1.0 - heightFrac));
+        vec3 lighting = mix(skyAmbient * shadowTint, sunColor, saturate(wrap * sunlight * typeSunlight));
+        lighting *= 0.90 + 0.18 * powder;
+        lighting += sunColor * silver * 0.62 * sunlight * typeSunlight;
+        lighting += sunColor * 0.12 * sunlight * typeSunlight * pow(heightFrac, 2.8) * shade;
         lighting = mix(lighting, accent, 0.012);
 
-        float sampleAlpha = 1.0 - exp(-density * baseStep * 2.12);
+        float sampleAlpha = 1.0 - exp(-density * baseStep * 2.18);
         accumulated += transmittance * lighting * sampleAlpha;
         transmittance *= 1.0 - sampleAlpha;
       }
@@ -322,9 +331,9 @@
 
     vec3 averageColor = accumulated / max(opacity, 0.001);
     averageColor = max(averageColor, 0.0);
-    averageColor = pow(averageColor, vec3(0.94));
-    vec3 color = 1.0 - exp(-averageColor * 1.52);
-    color = mix(color, color * color * (3.0 - 2.0 * color), 0.07);
+    averageColor = pow(averageColor, vec3(0.93));
+    vec3 color = 1.0 - exp(-averageColor * 1.34);
+    color = mix(color, color * color * (3.0 - 2.0 * color), 0.10);
     fragColor = vec4(color * opacity, opacity);
   }
   `;
