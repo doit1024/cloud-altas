@@ -15,7 +15,7 @@
     #scene{position:fixed;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}#scene:active{cursor:grabbing}
     .masthead{position:fixed;z-index:4;left:50px;top:48px;margin:0;color:var(--white);font:13px/1 var(--mono);letter-spacing:.35em;text-transform:uppercase;text-shadow:0 1px 12px rgba(16,55,83,.18)}
     .cloud-nav{position:fixed;z-index:5;left:50px;top:105px;bottom:40vh;width:218px;display:flex}.rail{position:relative;width:14px;margin-right:20px;border-left:1px solid rgba(255,255,255,.62)}.cloud-list{display:flex;flex:1;flex-direction:column;justify-content:space-between;padding:0}.cloud-btn{position:relative;min-height:42px;border:0;background:transparent;color:rgba(23,49,74,.58);text-align:left;cursor:pointer;padding:2px 8px;transition:.25s ease}.cloud-btn:before{content:"";position:absolute;left:-37px;top:14px;width:6px;height:6px;border-radius:50%;background:rgba(23,49,74,.38);box-shadow:0 0 0 1px rgba(255,255,255,.45)}.cloud-btn:hover{color:var(--ink);transform:translateX(2px)}.cloud-btn.active{color:var(--ink)}.cloud-btn.active:before{left:-40.5px;top:10px;width:13px;height:13px;background:white;box-shadow:0 0 0 3px rgba(255,255,255,.2)}.cloud-en{display:block;font:12px/1.2 var(--serif);letter-spacing:.12em;text-transform:uppercase}.cloud-cn{display:block;margin-top:5px;font:14px/1.2 var(--mono);letter-spacing:.08em}.cloud-btn.active .cloud-en{font-weight:700}.cloud-btn.active .cloud-cn{font-size:16px;font-weight:650}
-    .drag-hint{position:fixed;z-index:4;right:7.5%;top:46%;display:flex;align-items:center;gap:11px;color:white;font:14px/1 var(--serif);letter-spacing:.06em;text-shadow:0 1px 8px rgba(15,55,80,.25);pointer-events:none}.drag-hint small{display:block;margin-top:10px;text-align:center;font:18px/1 var(--serif);letter-spacing:.45em}
+    .drag-hint{position:fixed;z-index:4;right:7.5%;top:46%;display:flex;flex-direction:column;align-items:flex-end;gap:16px;color:white;font:14px/1 var(--serif);letter-spacing:.06em;text-shadow:0 1px 8px rgba(15,55,80,.25);pointer-events:none}.drag-hint small{display:block;margin-top:10px;text-align:center;font:18px/1 var(--serif);letter-spacing:.45em}.drag-hint p{margin:0;font:13px/1.3 var(--serif);letter-spacing:.04em}
     .scale{position:fixed;z-index:4;right:28%;bottom:32%;display:flex;align-items:flex-end;gap:8px;color:white;font:13px/1 var(--mono);text-shadow:0 1px 8px rgba(15,55,80,.25);pointer-events:none}.scale-leader{display:block;flex:0 0 auto;overflow:visible}.scale-leader circle{fill:currentColor}.scale-leader path{fill:none;stroke:currentColor;stroke-width:1;stroke-linecap:round;vector-effect:non-scaling-stroke}.scale span{padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,.85)}
     .cloud-info{position:fixed;z-index:4;left:9%;bottom:13%;width:min(650px,55vw);color:var(--ink);text-shadow:0 1px 16px rgba(255,255,255,.25);animation:infoIn .45s ease both;pointer-events:none}@keyframes infoIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.cloud-info h1{margin:0;font:42px/1.05 var(--serif);letter-spacing:.03em}.cloud-info h2{display:inline-block;margin:8px 0 12px;font:30px/1.1 "Songti SC","STSong",var(--serif);font-weight:500;letter-spacing:.12em}.cloud-info h2:after{content:"";display:inline-block;width:54px;height:1px;margin-left:18px;vertical-align:middle;background:currentColor;opacity:.75}.cloud-info p{margin:0;color:rgba(23,49,74,.75);font:14px/1.5 var(--mono);letter-spacing:.08em}.cloud-info .fact{position:absolute;left:0;top:100%;width:min(560px,80vw);margin-top:10px;color:rgba(23,49,74,.82);font:12px/1.7 var(--mono);letter-spacing:.04em}
     .credit{position:fixed;z-index:6;right:44px;bottom:28px;color:rgba(255,255,255,.78);font:11px/1 var(--mono);letter-spacing:.14em;text-decoration:none;text-shadow:0 1px 8px rgba(15,55,80,.25)}.credit:hover{color:white}
@@ -29,10 +29,10 @@
 <body>
   <img class="backdrop" src="cloud-atlas-bg.png" alt="阳光照耀下的高空云海与远山">
   <div class="wash"></div>
-  <canvas id="scene" aria-label="可交互的三维云体模型。拖拽旋转视角，滚轮缩放。"></canvas>
+  <canvas id="scene" aria-label="可交互的三维云体模型。拖拽旋转视角，滚轮缩放。轻点画面打雷；5 秒内没有打雷会自动打一次。"></canvas>
   <p class="masthead">Atlas of Clouds</p>
   <nav class="cloud-nav" aria-label="云型选择"><div class="rail"></div><div class="cloud-list" id="cloud-list"></div></nav>
-  <div class="drag-hint" aria-hidden="true"><div>Drag to orbit<small>← →</small></div></div>
+    <div class="drag-hint" aria-hidden="true"><div>Drag to orbit<small>← →</small></div><p id="strike-hint">Click to strike</p></div>
   <div class="scale" aria-hidden="true"><svg class="scale-leader" viewBox="0 0 42 28" width="42" height="28" aria-hidden="true"><circle cx="4" cy="3.5" r="3"/><path d="M4 3.5 L39 24.5"/></svg><span id="scale-label">1.2 km</span></div>
   <section class="cloud-info" id="cloud-info" aria-live="polite"></section>
   <a class="credit" href="https://www.doooit.me" target="_blank" rel="noopener noreferrer">made by doit</a>
@@ -50,18 +50,21 @@
     {id:'cumulonimbus',type:7,en:'Cumulonimbus',cn:'积雨云',range:'0.5—16 km',copy:'Towering convection and thunder',fact:'强对流云可贯穿对流层，可能伴随雷电、短时强降雨、冰雹和阵风。',scale:'12 km',accent:'#f5e8db'}
   ];
   const VIEW_RESET={yaw:-.14,pitch:-.04,zoom:.90};
-  let state={active:4,density:.88,sunlight:.86,yaw:VIEW_RESET.yaw,pitch:VIEW_RESET.pitch,zoom:VIEW_RESET.zoom,drag:false,x:0,y:0};
+  let state={active:4,density:.88,sunlight:.86,yaw:VIEW_RESET.yaw,pitch:VIEW_RESET.pitch,zoom:VIEW_RESET.zoom,drag:false,x:0,y:0,strikeRequested:false};
   const list=document.querySelector('#cloud-list'),info=document.querySelector('#cloud-info'),scale=document.querySelector('#scale-label');
   CLOUDS.forEach((c,i)=>{list.insertAdjacentHTML('beforeend',`<button class="cloud-btn" data-cloud="${i}" aria-label="查看${c.cn}"><span class="cloud-en">${c.en}</span><span class="cloud-cn">${c.cn}</span></button>`)});
-  function selectCloud(i){state.active=i;state.yaw=VIEW_RESET.yaw;state.pitch=VIEW_RESET.pitch;state.zoom=VIEW_RESET.zoom;const c=CLOUDS[i];document.querySelectorAll('[data-cloud]').forEach(b=>b.classList.toggle('active',+b.dataset.cloud===i));info.style.animation='none';void info.offsetWidth;info.style.animation='';info.innerHTML=`<h1>${c.en.toUpperCase()}</h1><h2>${c.cn}</h2><p>${c.copy} · ${c.range}</p><p class="fact">${c.fact}</p>`;scale.textContent=c.scale}
+  function selectCloud(i){state.active=i;state.strikeRequested=false;state.yaw=VIEW_RESET.yaw;state.pitch=VIEW_RESET.pitch;state.zoom=VIEW_RESET.zoom;const c=CLOUDS[i];document.querySelectorAll('[data-cloud]').forEach(b=>b.classList.toggle('active',+b.dataset.cloud===i));info.style.animation='none';void info.offsetWidth;info.style.animation='';info.innerHTML=`<h1>${c.en.toUpperCase()}</h1><h2>${c.cn}</h2><p>${c.copy} · ${c.range}</p><p class="fact">${c.fact}</p>`;scale.textContent=c.scale}
   document.addEventListener('click',e=>{const b=e.target.closest('[data-cloud]');if(b)selectCloud(+b.dataset.cloud)});selectCloud(state.active);
   document.querySelector('#density').addEventListener('input',e=>state.density=+e.target.value/100);document.querySelector('#sunlight').addEventListener('input',e=>state.sunlight=+e.target.value/100);
   const canvas=document.querySelector('#scene');
   const rendererReady=window.CloudRenderer?.start(canvas,state,()=>CLOUDS[state.active]);
   if(!rendererReady)document.querySelector('#warning').classList.add('show');
-  canvas.addEventListener('pointerdown',e=>{e.preventDefault();canvas.setPointerCapture(e.pointerId);Object.assign(state,{drag:true,x:e.clientX,y:e.clientY})});
-  canvas.addEventListener('pointermove',e=>{if(!state.drag)return;e.preventDefault();state.yaw+=(e.clientX-state.x)*.004;state.pitch=Math.max(-.45,Math.min(.42,state.pitch+(e.clientY-state.y)*.0025));state.x=e.clientX;state.y=e.clientY});
-  ['pointerup','pointercancel'].forEach(type=>canvas.addEventListener(type,()=>state.drag=false));
+  const gesture={x:0,y:0,moved:false};
+  canvas.addEventListener('pointerdown',e=>{e.preventDefault();try{canvas.setPointerCapture(e.pointerId)}catch(error){}gesture.x=e.clientX;gesture.y=e.clientY;gesture.moved=false;Object.assign(state,{drag:true,x:e.clientX,y:e.clientY})});
+  canvas.addEventListener('pointermove',e=>{if(!state.drag)return;e.preventDefault();if(Math.hypot(e.clientX-gesture.x,e.clientY-gesture.y)>4)gesture.moved=true;state.yaw+=(e.clientX-state.x)*.004;state.pitch=Math.max(-.45,Math.min(.42,state.pitch+(e.clientY-state.y)*.0025));state.x=e.clientX;state.y=e.clientY});
+  function endGesture(cancel){if(state.drag&&!cancel&&!gesture.moved)state.strikeRequested=true;state.drag=false}
+  canvas.addEventListener('pointerup',()=>endGesture(false));
+  canvas.addEventListener('pointercancel',()=>endGesture(true));
   const ZOOM_MIN=0.38,ZOOM_MAX=1.85;
   canvas.addEventListener('wheel',e=>{e.preventDefault();state.zoom=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,state.zoom+e.deltaY*.0008))},{passive:false});
   document.addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey)e.preventDefault()},{passive:false});
