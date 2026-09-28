@@ -413,7 +413,7 @@
   }
 
   const BOLT_LIMIT = 64;
-  const STRIKE_EVERY = 7.6;
+  const AUTO_STRIKE_MS = 5000;
   const FLASH_COLOR = [0.74, 0.8, 1];
   const BOLT_GEOMETRY = {
     radius: [0.0105, 0.0062, 0.0038, 0.0024],
@@ -647,14 +647,10 @@
       let nextStrikeAt = Infinity;
       let reportedGlError = false;
 
-      function scheduleStrike(now) {
-        const gap = uniformRange(4.2, 11) * (STRIKE_EVERY / 7.6);
-        nextStrikeAt = now + gap * 1000;
-      }
-
       function beginStrike(now, cloudType, limit) {
         strike = buildStrike(cloudType, limit);
         strike.startedAt = now;
+        nextStrikeAt = now + AUTO_STRIKE_MS;
       }
 
       function render(now) {
@@ -674,24 +670,15 @@
         if (cloud.id !== activeCloudId) {
           activeCloudId = cloud.id;
           strike = null;
-          nextStrikeAt = cloud.id === "cumulonimbus" ? 0 : Infinity;
-          if (cloud.id === "cumulonimbus") scheduleStrike(now);
+          nextStrikeAt = now + AUTO_STRIKE_MS;
         }
         const strikeElapsed = strike ? (now - strike.startedAt) / 1000 : 0;
-        if (strike && strikeElapsed > strike.duration) {
-          strike = null;
-          if (cloud.id === "cumulonimbus") scheduleStrike(now);
-        }
-        if (!strike && cloud.id === "cumulonimbus") {
-          if (document.hidden) {
-            if (now >= nextStrikeAt) scheduleStrike(now);
-          } else if (now >= nextStrikeAt) {
-            beginStrike(now, cloud.type, segmentLimit);
-          }
-        }
+        if (strike && strikeElapsed > strike.duration) strike = null;
         if (state.strikeRequested) {
           state.strikeRequested = false;
-          if (cloud.id !== "cumulonimbus" && !strike) beginStrike(now, cloud.type, segmentLimit);
+          beginStrike(now, cloud.type, segmentLimit);
+        } else if (!strike && !document.hidden && now >= nextStrikeAt) {
+          beginStrike(now, cloud.type, segmentLimit);
         }
 
         let flash = 0;

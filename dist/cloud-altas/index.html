@@ -29,7 +29,7 @@
 <body>
   <img class="backdrop" src="cloud-atlas-bg.png" alt="阳光照耀下的高空云海与远山">
   <div class="wash"></div>
-  <canvas id="scene" aria-label="可交互的三维云体模型。拖拽旋转视角，滚轮缩放。积雨云会自动打雷，其他云型轻点画面触发闪电。"></canvas>
+  <canvas id="scene" aria-label="可交互的三维云体模型。拖拽旋转视角，滚轮缩放。轻点画面打雷；5 秒内没有打雷会自动打一次。"></canvas>
   <p class="masthead">Atlas of Clouds</p>
   <nav class="cloud-nav" aria-label="云型选择"><div class="rail"></div><div class="cloud-list" id="cloud-list"></div></nav>
     <div class="drag-hint" aria-hidden="true"><div>Drag to orbit<small>← →</small></div><p id="strike-hint">Click to strike</p></div>
@@ -53,7 +53,7 @@
   let state={active:4,density:.88,sunlight:.86,yaw:VIEW_RESET.yaw,pitch:VIEW_RESET.pitch,zoom:VIEW_RESET.zoom,drag:false,x:0,y:0,strikeRequested:false};
   const list=document.querySelector('#cloud-list'),info=document.querySelector('#cloud-info'),scale=document.querySelector('#scale-label');
   CLOUDS.forEach((c,i)=>{list.insertAdjacentHTML('beforeend',`<button class="cloud-btn" data-cloud="${i}" aria-label="查看${c.cn}"><span class="cloud-en">${c.en}</span><span class="cloud-cn">${c.cn}</span></button>`)});
-  function selectCloud(i){state.active=i;state.strikeRequested=false;state.yaw=VIEW_RESET.yaw;state.pitch=VIEW_RESET.pitch;state.zoom=VIEW_RESET.zoom;const c=CLOUDS[i];document.querySelectorAll('[data-cloud]').forEach(b=>b.classList.toggle('active',+b.dataset.cloud===i));document.querySelector('#strike-hint').textContent=c.id==='cumulonimbus'?'Lightning strikes on its own':'Click to strike';info.style.animation='none';void info.offsetWidth;info.style.animation='';info.innerHTML=`<h1>${c.en.toUpperCase()}</h1><h2>${c.cn}</h2><p>${c.copy} · ${c.range}</p><p class="fact">${c.fact}</p>`;scale.textContent=c.scale}
+  function selectCloud(i){state.active=i;state.strikeRequested=false;state.yaw=VIEW_RESET.yaw;state.pitch=VIEW_RESET.pitch;state.zoom=VIEW_RESET.zoom;const c=CLOUDS[i];document.querySelectorAll('[data-cloud]').forEach(b=>b.classList.toggle('active',+b.dataset.cloud===i));info.style.animation='none';void info.offsetWidth;info.style.animation='';info.innerHTML=`<h1>${c.en.toUpperCase()}</h1><h2>${c.cn}</h2><p>${c.copy} · ${c.range}</p><p class="fact">${c.fact}</p>`;scale.textContent=c.scale}
   document.addEventListener('click',e=>{const b=e.target.closest('[data-cloud]');if(b)selectCloud(+b.dataset.cloud)});selectCloud(state.active);
   document.querySelector('#density').addEventListener('input',e=>state.density=+e.target.value/100);document.querySelector('#sunlight').addEventListener('input',e=>state.sunlight=+e.target.value/100);
   const canvas=document.querySelector('#scene');
@@ -62,7 +62,7 @@
   const gesture={x:0,y:0,moved:false};
   canvas.addEventListener('pointerdown',e=>{e.preventDefault();try{canvas.setPointerCapture(e.pointerId)}catch(error){}gesture.x=e.clientX;gesture.y=e.clientY;gesture.moved=false;Object.assign(state,{drag:true,x:e.clientX,y:e.clientY})});
   canvas.addEventListener('pointermove',e=>{if(!state.drag)return;e.preventDefault();if(Math.hypot(e.clientX-gesture.x,e.clientY-gesture.y)>4)gesture.moved=true;state.yaw+=(e.clientX-state.x)*.004;state.pitch=Math.max(-.45,Math.min(.42,state.pitch+(e.clientY-state.y)*.0025));state.x=e.clientX;state.y=e.clientY});
-  function endGesture(cancel){if(state.drag&&!cancel&&!gesture.moved&&CLOUDS[state.active].id!=='cumulonimbus')state.strikeRequested=true;state.drag=false}
+  function endGesture(cancel){if(state.drag&&!cancel&&!gesture.moved)state.strikeRequested=true;state.drag=false}
   canvas.addEventListener('pointerup',()=>endGesture(false));
   canvas.addEventListener('pointercancel',()=>endGesture(true));
   const ZOOM_MIN=0.38,ZOOM_MAX=1.85;
