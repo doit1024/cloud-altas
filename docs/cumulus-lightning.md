@@ -15,7 +15,7 @@
 
 本项目渲染器是每帧全屏单次步进，没有参考实现那种十几次到几十次的渐进累加。因此不必做“闪电路径绕开累加缓冲”。只要在 `flash > 0` 的帧里把电弧和点光算进同一次片元着色即可。
 
-效果只在积雨云打开。积雨云的 `cloudType` 是 `7`（着色器里 `cloudType >= 6.5`）。
+积雨云（`cloudType` 为 `7`，着色器里 `cloudType >= 6.5`）按间隔自动放电。其他云型不自动放电，在画面上轻点（位移不超过 4 px）触发一次。拖拽旋转不会触发放电。
 
 ```mermaid
 flowchart LR
@@ -361,21 +361,21 @@ lighting += flashColor * flash * (9 * flashLight) * lit
 
 ## 6. 状态机
 
-只在 `CLOUDS[state.active].id === "cumulonimbus"` 且模式不是 `off` 时运行。切到其他云型时立刻清零 `flash` 和 `segCount`，并取消已排队的定时器。
+积雨云走自动调度。其他云型只响应轻点。切换云型时立刻清零 `flash` 和 `segCount`，并取消已排队的定时器。
 
 ```mermaid
 stateDiagram-v2
   [*] --> Idle
-  Idle --> Armed: 积雨云且模式为 auto
-  Armed --> Striking: 等待结束或点击
+  Idle --> Armed: 选中积雨云
+  Armed --> Striking: 等待结束
   Striking --> Striking: 每帧推进包络
-  Striking --> Armed: t 大于 duration 且模式为 auto
-  Striking --> Idle: t 大于 duration 且模式为 tap
-  Armed --> Idle: 切走积雨云或关闭
-  Idle --> Striking: tap 模式下点击
+  Striking --> Armed: 放电结束且仍是积雨云
+  Armed --> Idle: 切到其他云型
+  Idle --> Striking: 其他云型轻点
+  Striking --> Idle: 放电结束或切走云型
 ```
 
-模式默认 `auto`，只对积雨云生效。`tap` 作为可选项：点击画布空白处触发放电。拖拽轨道已经占用 `pointerdown`，所以点击判定要排除发生过移动的手势，阈值约 4 px。不新增常驻按钮也可以；若加，放在现有氛围控件附近，文案用“闪电”，不要挡住云砧。
+积雨云进入画面后按上面的间隔自动放电，右上角提示 “Lightning strikes on its own”。其他云型不排队，提示为 “Click to strike”：在画布上松开指针且位移不超过 4 px 时触发放电。拖拽轨道已经占用 `pointerdown`，超过 4 px 的手势只旋转视角。不额外放按钮。
 
 页面 `document.hidden` 时不放电，把等待重新排到可见之后。
 
@@ -387,7 +387,7 @@ stateDiagram-v2
 
 | 参数 | 默认 | 范围 | 说明 |
 | --- | --- | --- | --- |
-| `lightning` | `auto` | `auto` / `tap` / `off` | 仅积雨云 |
+| `lightning` | 按云型 | 积雨云 `auto`，其他云型 `tap` | 见第 6 节 |
 | `strikeEvery` | `7.6` s | `1.5–30` | 平均间隔的缩放 |
 | `branches` | `1` | `0–2` | 分叉条数倍率 |
 | `thickness` | `1` | `0.3–4` | 半径倍率 |
@@ -424,7 +424,8 @@ stateDiagram-v2
 - 云体内部在主闪时被冷白光照亮，随后按回击跳几下，再暗下去。
 - 同一次事件里能看出至少一次较暗的后续闪动。分叉在后续闪动里明显更弱。
 - 拖拽旋转和滚轮缩放仍然可用。放电过程中旋转，电弧留在云的模型空间里，跟着云转。
-- 切到积云、层积云或其他类型，没有电弧，也没有突然变亮。切走正在放电的积雨云时，闪光立刻消失。
+- 切到积云或其他类型时，正在进行的积雨云放电立刻消失，并且不会自己再打。在这些云上轻点会出现电弧；拖拽旋转不会打。
+- 切走任意正在放电的云型时，闪光立刻消失。
 - 浏览器控制台没有着色器编译错误。WebGL 2 不可用时仍走现有的警告条，不抛未捕获异常。
 
 桌面宽度和约 390 px 宽的视口都看一次。窄视口只检查段数降低后电弧仍然连续，而不是变成一团光斑。

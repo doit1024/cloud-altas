@@ -19,6 +19,13 @@
   uniform float zoom;
   uniform vec3 accent;
   uniform sampler3D noiseVolume;
+  uniform float flash;
+  uniform vec3 flashColor;
+  uniform int segCount;
+  uniform vec4 light0;
+  uniform vec4 light1;
+  uniform vec4 segA[64];
+  uniform vec4 segB[64];
 
   const float PI = 3.14159265359;
 
@@ -180,9 +187,20 @@
     float transmittance = 1.0;
     vec3 accumulated = vec3(0.0);
     bool insideCloud = false;
+    float depthMark[6];
+    float span = max(farDistance - nearDistance, 0.001);
+    for (int k = 0; k < 6; k++) depthMark[k] = 1.0;
+    int markCount = 0;
 
     for (int i = 0; i < 56; i++) {
       if (travel > farDistance || transmittance < 0.018) break;
+      for (int k = 0; k < 6; k++) {
+        if (markCount >= 6) break;
+        float mark = nearDistance + span * float(markCount) / 5.0;
+        if (travel + baseStep < mark) break;
+        depthMark[markCount] = transmittance;
+        markCount++;
+      }
 
       vec3 samplePosition = rayOrigin + rayDirection * travel;
       samplePosition.z *= 0.86;
@@ -199,6 +217,25 @@
         lighting += sunColor * sunlight * typeSunlight * lightVisibility * surfaceLight * (1.92 + phase * 1.36);
         lighting += sunColor * silver * 0.14 * sunlight * typeSunlight;
         lighting = mix(lighting, accent, 0.025);
+        if (flash > 0.001) {
+          float lit = 0.0;
+          for (int lamp = 0; lamp < 2; lamp++) {
+            vec4 bulb = lamp == 0 ? light0 : light1;
+            vec3 toward = bulb.xyz - samplePosition;
+            float radius2 = dot(toward, toward);
+            float reach = sqrt(max(radius2, 1e-5));
+            vec3 lightStep = toward / reach;
+            float optical = 0.0;
+            float walked = 0.0;
+            for (int j = 1; j <= 2; j++) {
+              float lightStride = 0.18 * float(j);
+              walked += lightStride;
+              optical += densityAt(samplePosition + lightStep * min(walked, reach)) * lightStride;
+            }
+            lit += bulb.w * exp(-optical * 2.04) / (radius2 + 0.18);
+          }
+          lighting += flashColor * flash * 9.0 * lit;
+        }
 
         float sampleAlpha = 1.0 - exp(-density * baseStep * 2.04);
         accumulated += transmittance * lighting * sampleAlpha;
@@ -209,17 +246,78 @@
       if (insideCloud && density <= 0.004) insideCloud = false;
       travel += baseStep * stride;
     }
+    for (int k = 0; k < 6; k++) {
+      if (markCount >= 6) break;
+      depthMark[markCount] = transmittance;
+      markCount++;
+    }
 
     float opacity = 1.0 - transmittance;
-    if (opacity < 0.006) {
+    vec3 cloudRgb = vec3(0.0);
+    float cloudAlpha = 0.0;
+    if (opacity >= 0.006) {
+      vec3 averageColor = accumulated / max(opacity, 0.001);
+      vec3 color = 1.0 - exp(-averageColor * 1.56);
+      color = pow(max(color, 0.0), vec3(0.92));
+      cloudRgb = color * opacity;
+      cloudAlpha = opacity;
+    }
+
+    float coreMask = 0.0;
+    float glowMask = 0.0;
+    float bloomMask = 0.0;
+    if (flash > 0.001 && segCount > 0) {
+      vec3 flatOrigin = vec3(rayOrigin.xy, rayOrigin.z * 0.86);
+      vec3 flatDirection = vec3(rayDirection.xy, rayDirection.z * 0.86);
+      float directionLength2 = max(dot(flatDirection, flatDirection), 1e-6);
+      for (int i = 0; i < 64; i++) {
+        if (i >= segCount) break;
+        vec3 start = segA[i].xyz;
+        vec3 endPoint = segB[i].xyz;
+        float brightness = segA[i].w;
+        float radius = max(segB[i].w, 1e-4);
+        vec3 segment = endPoint - start;
+        vec3 offset = flatOrigin - start;
+        float directionDot = dot(flatDirection, segment);
+        float segmentLength2 = dot(segment, segment);
+        float originDot = dot(flatDirection, offset);
+        float segmentDot = dot(segment, offset);
+        float denominator = directionLength2 * segmentLength2 - directionDot * directionDot;
+        float along = denominator > 1e-6
+          ? clamp((directionLength2 * segmentDot - directionDot * originDot) / denominator, 0.0, 1.0)
+          : 0.0;
+        float rayTravel = max((directionDot * along - originDot) / directionLength2, 0.0);
+        float distanceToBolt = length(offset + flatDirection * rayTravel - segment * along);
+        float occlusion = 1.0;
+        if (rayTravel > nearDistance && span > 0.0) {
+          float depth = clamp((rayTravel - nearDistance) / span, 0.0, 1.0) * 5.0;
+          int bin = int(min(depth, 4.0));
+          occlusion = mix(depthMark[bin], depthMark[bin + 1], fract(depth));
+        }
+        brightness *= occlusion;
+        float pixelWidth = rayTravel * (2.0 / 1.74) / resolution.y;
+        float edge = max(radius * 0.30, pixelWidth * 0.85);
+        float normalized = distanceToBolt / radius;
+        coreMask = max(coreMask, (1.0 - smoothstep(radius - edge, radius + edge, distanceToBolt)) * brightness);
+        glowMask = max(glowMask, exp(-(normalized * normalized) / 15.0) * brightness);
+        bloomMask = max(bloomMask, exp(-(distanceToBolt * distanceToBolt) / 0.04) * brightness);
+      }
+    }
+
+    vec3 bolt = (vec3(1.0) * 11.0 * coreMask
+      + vec3(0.70, 0.82, 1.0) * 1.7 * glowMask
+      + vec3(0.56, 0.60, 1.0) * 0.22 * bloomMask) * flash;
+    float boltPeak = max(bolt.r, max(bolt.g, bolt.b));
+    vec3 boltColor = bolt / (1.0 + boltPeak * 0.18);
+    float boltCover = clamp(coreMask * 0.95 + glowMask * 0.42 + bloomMask * 0.18, 0.0, 1.0);
+    vec3 veil = flashColor * flash * 0.035 * clamp(glowMask + bloomMask, 0.0, 1.0);
+    if (cloudAlpha < 0.004 && boltCover < 0.015) {
       fragColor = vec4(0.0);
       return;
     }
-
-    vec3 averageColor = accumulated / max(opacity, 0.001);
-    vec3 color = 1.0 - exp(-averageColor * 1.56);
-    color = pow(max(color, 0.0), vec3(0.92));
-    fragColor = vec4(color * opacity, opacity);
+    vec3 rgb = cloudRgb * (1.0 - clamp(coreMask, 0.0, 1.0)) + boltColor + veil;
+    float alpha = max(cloudAlpha, boltCover);
+    fragColor = vec4(rgb, alpha);
   }
   `;
 
@@ -312,6 +410,199 @@
     return texture;
   }
 
+  const BOLT_LIMIT = 64;
+  const STRIKE_EVERY = 7.6;
+  const FLASH_COLOR = [0.74, 0.8, 1];
+  const BOLT_GEOMETRY = {
+    radius: [0.0105, 0.0062, 0.0038, 0.0024],
+    brightness: [1, 0.58, 0.34, 0.2],
+    steps: [30, 6, 3, 2],
+    length: [0.2, 0.15, 0.11, 0.08],
+    count: [7, 8, 6],
+    maxLevel: 3,
+    kink: 0.42,
+    hardProbability: 0.16,
+    hook: 2.4,
+    persist: 0.72,
+    fall: 0.3,
+  };
+  const BOLT_PROFILES = {
+    0: { x: [0.45, 1.55], y: [0.5, 0.78], z: [-0.28, 0.28], scale: 0.45 },
+    2: { x: [0.2, 0.85], y: [0.08, 0.42], z: [-0.32, 0.32], scale: 0.55 },
+    3: { x: [0.45, 1.5], y: [0.2, 0.42], z: [-0.4, 0.4], scale: 0.5 },
+    4: { x: [0.3, 1.15], y: [0.05, 0.5], z: [-0.4, 0.4], scale: 0.72 },
+    5: { x: [0.3, 1.1], y: [0.28, 0.82], z: [-0.35, 0.35], scale: 0.82 },
+    6: { x: [0.22, 0.82], y: [0.28, 0.92], z: [-0.32, 0.32], scale: 0.84 },
+    7: { x: [0.15, 0.55], y: [1.15, 1.95], z: [-0.35, 0.35], scale: 1 },
+  };
+
+  function uniformRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function normalize3(vector) {
+    const length = Math.hypot(vector[0], vector[1], vector[2]) || 1;
+    return [vector[0] / length, vector[1] / length, vector[2] / length];
+  }
+
+  function buildStrike(cloudType, limit) {
+    const profile = BOLT_PROFILES[cloudType] || BOLT_PROFILES[6];
+    const geometry = BOLT_GEOMETRY;
+    const segments = [];
+    let budget = limit;
+    const roomLeft = () => budget - segments.length;
+
+    function walk(origin, direction, level, brightness, steps, leaderSteps) {
+      const nodes = [];
+      const radius = geometry.radius[level];
+      const stepLength = geometry.length[level] * profile.scale;
+      let point = origin.slice();
+      let heading = direction.slice();
+      for (let index = 0; index < steps && roomLeft() > 0; index++) {
+        const bend = Math.random() < geometry.hardProbability ? geometry.kink * geometry.hook : geometry.kink;
+        const leader = index < leaderSteps;
+        const fall = leader ? 0.04 : geometry.fall;
+        const verticalCap = leader ? -0.08 : -0.5;
+        heading = normalize3([
+          heading[0] * geometry.persist + uniformRange(-bend, bend),
+          Math.min(heading[1] * geometry.persist - fall, verticalCap),
+          heading[2] * geometry.persist + uniformRange(-bend, bend),
+        ]);
+        const next = [
+          point[0] + heading[0] * stepLength * uniformRange(0.7, 1.3),
+          point[1] + heading[1] * stepLength * uniformRange(0.7, 1.3),
+          point[2] + heading[2] * stepLength * uniformRange(0.7, 1.3),
+        ];
+        const progress = (index + 1) / steps;
+        const fade = level === 0 ? 1 - 0.08 * progress : Math.pow(1 - progress, 0.85);
+        segments.push({
+          a: point,
+          b: next,
+          brightness: brightness * fade,
+          radius,
+          branch: level > 0,
+        });
+        if (index > 0) nodes.push({ p: next, dir: heading.slice(), brightness: brightness * fade });
+        point = next;
+      }
+      return nodes;
+    }
+
+    function channel(channelBudget, amplitude, branchCounts) {
+      budget = Math.min(limit, segments.length + channelBudget);
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const origin = [
+        side * uniformRange(profile.x[0], profile.x[1]),
+        uniformRange(profile.y[0], profile.y[1]),
+        uniformRange(profile.z[0], profile.z[1]),
+      ];
+      const heading = normalize3([
+        side * uniformRange(0.8, 1.1),
+        uniformRange(-0.22, -0.05),
+        uniformRange(-0.35, 0.35),
+      ]);
+      const levels = [walk(origin, heading, 0, amplitude, Math.round(geometry.steps[0] * amplitude), Math.round(uniformRange(2, 4)))];
+      if (amplitude > 0.8 && levels[0].length > 6 && Math.random() < 0.6) {
+        const splitAt = levels[0][Math.floor(uniformRange(0.42, 0.68) * levels[0].length)];
+        const splitHeading = normalize3([
+          splitAt.dir[0] + uniformRange(-0.7, 0.7),
+          splitAt.dir[1],
+          splitAt.dir[2] + uniformRange(-0.45, 0.45),
+        ]);
+        levels[0] = levels[0].concat(walk(
+          splitAt.p,
+          splitHeading,
+          0,
+          0.82 * uniformRange(0.85, 1),
+          Math.round(geometry.steps[0] * 0.4),
+          0,
+        ));
+      }
+      for (let level = 0; level < geometry.maxLevel; level++) {
+        const parents = (levels[level] || []).slice();
+        const children = [];
+        for (let branch = 0; branch < branchCounts[level] && roomLeft() > 3 && parents.length; branch++) {
+          const parent = parents.splice(Math.floor(Math.random() * parents.length), 1)[0];
+          const branchSide = Math.random() < 0.5 ? -1 : 1;
+          const branchHeading = normalize3([
+            parent.dir[0] + branchSide * uniformRange(0.55, 1.3),
+            parent.dir[1] * uniformRange(0.35, 0.85),
+            parent.dir[2] + uniformRange(-0.9, 0.9),
+          ]);
+          children.push(...walk(
+            parent.p,
+            branchHeading,
+            level + 1,
+            parent.brightness * geometry.brightness[level + 1],
+            geometry.steps[level + 1],
+            0,
+          ));
+        }
+        levels[level + 1] = children;
+      }
+      return origin;
+    }
+
+    const counts = geometry.count.map((count) => Math.max(0, Math.round(count)));
+    const doubled = Math.random() < 0.3;
+    const origin = channel(
+      doubled ? Math.round(limit * 0.58) : limit,
+      1,
+      doubled ? counts.map((count) => Math.ceil(count * 0.6)) : counts,
+    );
+    if (doubled) {
+      channel(
+        limit,
+        uniformRange(0.55, 0.75),
+        counts.map((count) => Math.ceil(count * 0.4)),
+      );
+    }
+
+    const strokes = [{ t0: 0, amplitude: 1, tau: uniformRange(0.055, 0.09), branched: 1 }];
+    let cursor = 0;
+    let afterglow = false;
+    if (Math.random() < 0.72) {
+      const returns = Math.max(1, Math.round(uniformRange(1, 3)));
+      for (let index = 0; index < returns; index++) {
+        cursor += uniformRange(0.04, 0.1);
+        strokes.push({
+          t0: cursor,
+          amplitude: uniformRange(0.35, 0.9),
+          tau: uniformRange(0.04, 0.08),
+          branched: 0.16,
+        });
+      }
+    }
+    if (Math.random() < 0.45) {
+      strokes.push({ t0: cursor + 0.02, amplitude: 0.13, tau: 0.34, branched: 0.1 });
+      afterglow = true;
+    }
+
+    return {
+      segments: segments.slice(0, limit),
+      origin,
+      strokes,
+      duration: strokes[strokes.length - 1].t0 + (afterglow ? 1 : 0.45),
+      startedAt: 0,
+    };
+  }
+
+  function strikeEnergy(strike, elapsed) {
+    let energy = 0;
+    let branchEnergy = 0;
+    for (const stroke of strike.strokes) {
+      if (elapsed < stroke.t0) continue;
+      const age = elapsed - stroke.t0;
+      const pulse = stroke.amplitude * Math.min(1, age / 0.008) * Math.exp(-age / stroke.tau);
+      energy += pulse;
+      branchEnergy = Math.max(branchEnergy, pulse * stroke.branched);
+    }
+    return {
+      flash: energy * uniformRange(0.82, 1.18),
+      branchGate: energy > 0 ? Math.max(branchEnergy / energy, 0.12) : 0,
+    };
+  }
+
   function start(canvas, state, getCloud) {
     const gl = canvas.getContext("webgl2", {
       antialias: false,
@@ -338,12 +629,31 @@
       gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
 
       const uniforms = {};
-      for (const name of ["resolution", "time", "cloudType", "coverage", "sunlight", "yaw", "pitch", "zoom", "accent", "noiseVolume"]) {
+      for (const name of ["resolution", "time", "cloudType", "coverage", "sunlight", "yaw", "pitch", "zoom", "accent", "noiseVolume", "flash", "flashColor", "segCount", "light0", "light1", "segA[0]", "segB[0]"]) {
         uniforms[name] = gl.getUniformLocation(program, name);
+      }
+      if (uniforms["segA[0]"] == null || uniforms["segB[0]"] == null) {
+        throw new Error("Lightning segment uniforms were not linked");
       }
 
       const noiseTexture = createNoiseTexture(gl);
       const startedAt = performance.now();
+      const segmentStart = new Float32Array(BOLT_LIMIT * 4);
+      const segmentEnd = new Float32Array(BOLT_LIMIT * 4);
+      let activeCloudId = null;
+      let strike = null;
+      let nextStrikeAt = Infinity;
+      let reportedGlError = false;
+
+      function scheduleStrike(now) {
+        const gap = uniformRange(4.2, 11) * (STRIKE_EVERY / 7.6);
+        nextStrikeAt = now + gap * 1000;
+      }
+
+      function beginStrike(now, cloudType, limit) {
+        strike = buildStrike(cloudType, limit);
+        strike.startedAt = now;
+      }
 
       function render(now) {
         const scale = innerWidth > 900 ? 0.72 : 0.86;
@@ -358,6 +668,53 @@
 
         const cloud = getCloud();
         const accentRgb = cloud.accent.slice(1).match(/.{2}/g).map((hex) => parseInt(hex, 16) / 255);
+        const segmentLimit = innerWidth < 700 ? 32 : BOLT_LIMIT;
+        if (cloud.id !== activeCloudId) {
+          activeCloudId = cloud.id;
+          strike = null;
+          nextStrikeAt = cloud.id === "cumulonimbus" ? 0 : Infinity;
+          if (cloud.id === "cumulonimbus") scheduleStrike(now);
+        }
+        if (strike && (now - strike.startedAt) / 1000 > strike.duration) {
+          strike = null;
+          if (cloud.id === "cumulonimbus") scheduleStrike(now);
+        }
+        if (!strike && cloud.id === "cumulonimbus") {
+          if (document.hidden) {
+            if (now >= nextStrikeAt) scheduleStrike(now);
+          } else if (now >= nextStrikeAt) {
+            beginStrike(now, cloud.type, segmentLimit);
+          }
+        }
+        if (state.strikeRequested) {
+          state.strikeRequested = false;
+          if (cloud.id !== "cumulonimbus" && !strike) beginStrike(now, cloud.type, segmentLimit);
+        }
+
+        let flash = 0;
+        let segmentCount = 0;
+        segmentStart.fill(0);
+        segmentEnd.fill(0);
+        if (strike) {
+          const energy = strikeEnergy(strike, (now - strike.startedAt) / 1000);
+          flash = energy.flash;
+          const branchGate = energy.branchGate;
+          segmentCount = strike.segments.length;
+          for (let index = 0; index < segmentCount; index++) {
+            const segment = strike.segments[index];
+            const brightness = segment.brightness * (segment.branch ? branchGate : 1);
+            const offset = index * 4;
+            segmentStart[offset] = segment.a[0];
+            segmentStart[offset + 1] = segment.a[1];
+            segmentStart[offset + 2] = segment.a[2] * 0.86;
+            segmentStart[offset + 3] = brightness;
+            segmentEnd[offset] = segment.b[0];
+            segmentEnd[offset + 1] = segment.b[1];
+            segmentEnd[offset + 2] = segment.b[2] * 0.86;
+            segmentEnd[offset + 3] = segment.radius;
+          }
+        }
+        const origin = strike ? strike.origin : [0, 0, 0];
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.useProgram(program);
@@ -373,7 +730,27 @@
         gl.uniform1f(uniforms.pitch, state.pitch);
         gl.uniform1f(uniforms.zoom, state.zoom);
         gl.uniform3f(uniforms.accent, ...accentRgb);
+        gl.uniform1f(uniforms.flash, flash);
+        gl.uniform3f(uniforms.flashColor, FLASH_COLOR[0], FLASH_COLOR[1], FLASH_COLOR[2]);
+        gl.uniform1i(uniforms.segCount, segmentCount);
+        gl.uniform4f(
+          uniforms.light0,
+          origin[0] * 0.45,
+          origin[1] + 0.05,
+          origin[2] * 0.45 * 0.86,
+          strike ? 1 : 0,
+        );
+        gl.uniform4f(uniforms.light1, origin[0], origin[1], origin[2] * 0.86, strike ? 0.75 : 0);
+        if (segmentCount > 0) {
+          gl.uniform4fv(uniforms["segA[0]"], segmentStart);
+          gl.uniform4fv(uniforms["segB[0]"], segmentEnd);
+        }
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        const glError = gl.getError();
+        if (glError && !reportedGlError) {
+          reportedGlError = true;
+          console.error("Volumetric cloud renderer WebGL error", glError);
+        }
         requestAnimationFrame(render);
       }
 
