@@ -304,19 +304,21 @@
       }
     }
 
+    float flashCover = clamp(flash, 0.0, 1.0);
     vec3 bolt = (vec3(1.0) * 11.0 * coreMask
       + vec3(0.70, 0.82, 1.0) * 1.7 * glowMask
       + vec3(0.56, 0.60, 1.0) * 0.22 * bloomMask) * flash;
     float boltPeak = max(bolt.r, max(bolt.g, bolt.b));
     vec3 boltColor = bolt / (1.0 + boltPeak * 0.18);
-    float boltCover = clamp(coreMask * 0.95 + glowMask * 0.42 + bloomMask * 0.18, 0.0, 1.0);
+    float coreA = clamp(coreMask, 0.0, 1.0) * flashCover;
+    float boltCover = clamp((coreMask * 0.95 + glowMask * 0.42 + bloomMask * 0.18) * flashCover, 0.0, 1.0);
     vec3 veil = flashColor * flash * 0.035 * clamp(glowMask + bloomMask, 0.0, 1.0);
     if (cloudAlpha < 0.004 && boltCover < 0.015) {
       fragColor = vec4(0.0);
       return;
     }
-    vec3 rgb = cloudRgb * (1.0 - clamp(coreMask, 0.0, 1.0)) + boltColor + veil;
-    float alpha = max(cloudAlpha, boltCover);
+    vec3 rgb = cloudRgb * (1.0 - coreA) + boltColor + veil;
+    float alpha = min(1.0, cloudAlpha * (1.0 - coreA) + boltCover);
     fragColor = vec4(rgb, alpha);
   }
   `;
@@ -675,7 +677,8 @@
           nextStrikeAt = cloud.id === "cumulonimbus" ? 0 : Infinity;
           if (cloud.id === "cumulonimbus") scheduleStrike(now);
         }
-        if (strike && (now - strike.startedAt) / 1000 > strike.duration) {
+        const strikeElapsed = strike ? (now - strike.startedAt) / 1000 : 0;
+        if (strike && strikeElapsed > strike.duration) {
           strike = null;
           if (cloud.id === "cumulonimbus") scheduleStrike(now);
         }
@@ -696,7 +699,7 @@
         segmentStart.fill(0);
         segmentEnd.fill(0);
         if (strike) {
-          const energy = strikeEnergy(strike, (now - strike.startedAt) / 1000);
+          const energy = strikeEnergy(strike, strikeElapsed);
           flash = energy.flash;
           const branchGate = energy.branchGate;
           segmentCount = strike.segments.length;

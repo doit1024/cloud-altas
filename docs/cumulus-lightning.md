@@ -149,12 +149,14 @@ weight * exp(-τ) / (r² + 0.18)
 没有云的像素也要能画出伸出云体的电弧。背景是 `cloud-atlas-bg.png`，画布是透明的。闪光和电弧用预乘加色写进 `fragColor`，不要去改照片像素：
 
 ```
-veil = flashColor * flash * 0.035
-rgb  = cloudRgb + boltRgb + veil * boltCoverage
-a    = max(cloudAlpha, boltAlpha)
+flashCover = clamp(flash, 0, 1)
+coreA      = clamp(coreMask, 0, 1) * flashCover
+boltAlpha  = clamp((core + glow + bloom) * flashCover, 0, 1)
+rgb        = cloudRgb * (1 - coreA) + boltRgb + veil
+a          = min(1, cloudAlpha * (1 - coreA) + boltAlpha)
 ```
 
-`boltAlpha` 取电芯和辉光的亮度，泛光可以更透。`veil` 只在电弧附近或整幅很淡地加，避免把晴空照片整张洗白。建议整幅 veil 保持 `0.035` 这一档，并乘上电弧覆盖的软遮罩；没有放电时两者都是 0，其他云型路径与现在一致。
+画布开启了预乘 alpha。电弧几何在整次放电期间都在，只有 `flash` 随回击衰减。透明度和抠掉云体的权重必须跟着 `flashCover` 走。如果遮罩一直不透明而颜色褪成 0，天空上会留下一条黑线。`veil` 只在电弧附近很淡地加，避免把晴空照片整张洗白。没有放电时两者都是 0，其他云型路径与现在一致。
 
 ### 4.3 点光插入位置
 
