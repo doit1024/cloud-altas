@@ -44,6 +44,52 @@
     return 1.0 - length((p - center) / radii);
   }
 
+  float sphere(vec3 p, vec3 center, float radius) {
+    return 1.0 - length(p - center) / max(radius, 0.001);
+  }
+
+  // Positive-inside fields. blend is in the same units as the field, not world distance.
+  float smoothUnion(float a, float b, float blend) {
+    float h = clamp(0.5 + 0.5 * (a - b) / blend, 0.0, 1.0);
+    return mix(b, a, h) + blend * h * (1.0 - h);
+  }
+
+  float stratocumulusEnvelope(vec3 p) {
+    float field = sphere(p, vec3(-1.55, -0.02, 0.06), 0.70);
+    field = smoothUnion(field, sphere(p, vec3(-0.72, 0.20, -0.14), 0.62), 0.40);
+    field = smoothUnion(field, sphere(p, vec3(0.12, 0.04, 0.16), 0.74), 0.44);
+    field = smoothUnion(field, sphere(p, vec3(0.92, 0.24, -0.06), 0.60), 0.40);
+    field = smoothUnion(field, sphere(p, vec3(1.62, 0.00, 0.12), 0.66), 0.42);
+    field = smoothUnion(field, sphere(p, vec3(-0.28, 0.52, 0.04), 0.48), 0.34);
+    field = smoothUnion(field, sphere(p, vec3(0.62, 0.50, 0.16), 0.46), 0.32);
+    return min(field, p.y + 0.92);
+  }
+
+  float cumulusEnvelope(vec3 p) {
+    float field = sphere(p, vec3(0.02, -0.12, 0.0), 0.86);
+    field = smoothUnion(field, sphere(p, vec3(-0.58, 0.16, 0.12), 0.58), 0.38);
+    field = smoothUnion(field, sphere(p, vec3(0.60, 0.12, -0.10), 0.54), 0.38);
+    field = smoothUnion(field, sphere(p, vec3(0.06, 0.52, -0.02), 0.52), 0.36);
+    field = smoothUnion(field, sphere(p, vec3(-0.24, 0.92, 0.10), 0.40), 0.32);
+    field = smoothUnion(field, sphere(p, vec3(0.34, 0.84, -0.12), 0.36), 0.30);
+    return min(field, p.y + 0.82);
+  }
+
+  float cumulonimbusEnvelope(vec3 p) {
+    float column = sphere(p, vec3(0.04, -0.08, 0.0), 0.74);
+    column = smoothUnion(column, sphere(p, vec3(-0.22, 0.48, 0.08), 0.58), 0.40);
+    column = smoothUnion(column, sphere(p, vec3(0.20, 0.98, -0.05), 0.52), 0.38);
+    column = smoothUnion(column, sphere(p, vec3(-0.02, 1.42, 0.04), 0.46), 0.36);
+    column = smoothUnion(column, sphere(p, vec3(0.12, 1.76, 0.0), 0.40), 0.32);
+    float anvil = ellipsoid(p, vec3(0.10, 2.02, 0.0), vec3(1.68, 0.40, 0.92));
+    anvil = smoothUnion(anvil, sphere(p, vec3(-0.78, 1.90, 0.12), 0.44), 0.34);
+    anvil = smoothUnion(anvil, sphere(p, vec3(0.92, 1.86, -0.08), 0.40), 0.32);
+    float base = ellipsoid(p, vec3(-0.12, -0.58, 0.0), vec3(1.58, 0.50, 1.08));
+    base = smoothUnion(base, sphere(p, vec3(0.82, -0.32, 0.14), 0.52), 0.38);
+    base = smoothUnion(base, sphere(p, vec3(-0.92, -0.40, -0.10), 0.48), 0.36);
+    return smoothUnion(smoothUnion(column, anvil, 0.42), base, 0.48);
+  }
+
   float cloudEnvelope(vec3 p) {
     float envelope = -2.0;
 
@@ -74,43 +120,35 @@
       envelope -= max(abs(p.z) - 2.30, 0.0) * 0.14;
       envelope -= max(abs(p.x) - 3.45, 0.0) * 0.10;
     } else if (cloudType < 5.5) {
-      envelope = max(envelope, ellipsoid(p, vec3(-1.62, -0.16, -0.04), vec3(1.82, 0.80, 1.30)));
-      envelope = max(envelope, ellipsoid(p, vec3(-0.30, 0.10, 0.02), vec3(1.76, 1.06, 1.38)));
-      envelope = max(envelope, ellipsoid(p, vec3(1.34, -0.12, 0.08), vec3(1.72, 0.84, 1.26)));
-      envelope = max(envelope, ellipsoid(p, vec3(-0.72, 0.70, -0.06), vec3(1.18, 0.90, 1.02)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.75, 0.62, 0.10), vec3(1.12, 0.84, 0.98)));
-      envelope = min(envelope, p.y + 1.02);
+      envelope = stratocumulusEnvelope(p);
     } else if (cloudType < 6.5) {
-      envelope = max(envelope, ellipsoid(p, vec3(-0.92, -0.30, 0.0), vec3(1.22, 0.80, 1.08)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.20, -0.04, 0.0), vec3(1.56, 1.18, 1.24)));
-      envelope = max(envelope, ellipsoid(p, vec3(1.10, -0.28, 0.08), vec3(1.06, 0.78, 0.94)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.08, 0.82, -0.05), vec3(1.00, 1.02, 0.92)));
-      envelope = min(envelope, p.y + 0.96);
+      envelope = cumulusEnvelope(p);
     } else {
-      envelope = max(envelope, ellipsoid(p, vec3(-0.30, -0.62, 0.0), vec3(1.82, 0.72, 1.28)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.20, 0.08, 0.0), vec3(1.44, 1.34, 1.08)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.02, 1.16, 0.0), vec3(1.12, 1.22, 0.90)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.16, 2.02, 0.0), vec3(1.72, 0.42, 0.94)));
+      envelope = cumulonimbusEnvelope(p);
     }
 
     return envelope;
   }
 
-  float densityAt(vec3 p) {
-    float envelope = cloudEnvelope(p);
+  float cloudDensity(vec3 p, out float envelope) {
+    envelope = cloudEnvelope(p);
     if (envelope < -0.48) return 0.0;
 
     vec3 wind = vec3(time * 0.0115, time * 0.0018, time * 0.0009);
     vec3 uvw = fract(p * 0.285 + wind + vec3(0.37, 0.61, 0.19));
     vec3 coarse = texture(noiseVolume, uvw).rgb;
-    vec3 fine = texture(noiseVolume, fract(uvw * 2.37 + vec3(0.17, 0.43, 0.29))).rgb;
 
     float heightBlend = smoothstep(-0.65, 1.45, p.y);
     float perlinWorley = mix(coarse.r, 1.0 - coarse.r, heightBlend * 0.22);
-    float erosion = coarse.g * 0.58 + fine.b * 0.42;
-    float edgeNoise = (perlinWorley - 0.50) * 1.34;
-    edgeNoise += (coarse.g - 0.50) * 0.56;
-    edgeNoise += (fine.b - 0.50) * 0.32;
+    float coarseEdge = (perlinWorley - 0.50) * 1.34 + (coarse.g - 0.50) * 0.56;
+    // Fine noise only shapes the shell. Deep inside uses the mean so the core stays smooth.
+    float shell = 1.0 - smoothstep(0.04, 0.40, envelope);
+    float fineB = 0.50;
+    if (shell > 0.04) {
+      fineB = mix(0.50, texture(noiseVolume, fract(uvw * 2.37 + vec3(0.17, 0.43, 0.29))).b, shell);
+    }
+    float erosion = coarse.g * 0.58 + fineB * 0.42;
+    float edgeNoise = coarseEdge + (fineB - 0.50) * 0.32;
     float shaped = envelope * 0.58 + edgeNoise;
     shaped -= (1.0 - erosion) * 0.09;
 
@@ -131,19 +169,23 @@
   }
 
   float cloudPhase(float cosTheta) {
-    return mix(henyeyGreenstein(0.62, cosTheta), henyeyGreenstein(-0.26, cosTheta), 0.22);
+    float sharp = henyeyGreenstein(0.74, cosTheta);
+    float broad = henyeyGreenstein(0.30, cosTheta);
+    float back = henyeyGreenstein(-0.24, cosTheta);
+    return mix(mix(sharp, broad, 0.38), back, 0.16);
   }
 
   float lightTransmittance(vec3 p, vec3 lightDirection) {
     float opticalDepth = 0.0;
-    float lightStep = 0.34;
+    float lightSteps[4] = float[4](0.10, 0.18, 0.36, 0.72);
     for (int i = 0; i < 4; i++) {
-      p += lightDirection * lightStep;
-      opticalDepth += densityAt(p) * lightStep;
+      float ignored = 0.0;
+      p += lightDirection * lightSteps[i];
+      opticalDepth += cloudDensity(p, ignored) * lightSteps[i];
     }
     float primary = exp(-opticalDepth * 2.75);
-    float secondary = exp(-opticalDepth * 0.72) * 0.30;
-    float tertiary = exp(-opticalDepth * 0.18) * 0.10;
+    float secondary = exp(-opticalDepth * 0.96) * 0.34;
+    float tertiary = exp(-opticalDepth * 0.33) * 0.14;
     return primary + secondary + tertiary;
   }
 
@@ -204,12 +246,14 @@
 
       vec3 samplePosition = rayOrigin + rayDirection * travel;
       samplePosition.z *= 0.86;
-      float density = densityAt(samplePosition);
+      float envelope = -2.0;
+      float density = cloudDensity(samplePosition, envelope);
 
       if (density > 0.008) {
         insideCloud = true;
         float lightVisibility = lightTransmittance(samplePosition, lightDirection);
-        float localOcclusion = densityAt(samplePosition + lightDirection * 0.14);
+        float ignored = 0.0;
+        float localOcclusion = cloudDensity(samplePosition + lightDirection * 0.14, ignored);
         float surfaceLight = mix(0.52, 1.18, exp(-localOcclusion * 2.2));
         float powder = 1.0 - exp(-density * 2.6);
         float silver = pow(clamp(1.0 - lightVisibility, 0.0, 1.0), 0.45) * phase;
@@ -230,7 +274,8 @@
             for (int j = 1; j <= 2; j++) {
               float lightStride = 0.18 * float(j);
               walked += lightStride;
-              optical += densityAt(samplePosition + lightStep * min(walked, reach)) * lightStride;
+              float lampIgnored = 0.0;
+              optical += cloudDensity(samplePosition + lightStep * min(walked, reach), lampIgnored) * lightStride;
             }
             lit += bulb.w * exp(-optical * 2.04) / (radius2 + 0.18);
           }
@@ -243,7 +288,13 @@
       }
 
       float stride = insideCloud ? 1.0 : (density > 0.0 ? 1.35 : 2.15);
-      if (insideCloud && density <= 0.004) insideCloud = false;
+      if (envelope < -0.48) {
+        float farOutside = -envelope - 0.48;
+        stride = clamp(stride + farOutside * 0.65 / max(baseStep, 0.02), stride, 4.2);
+        insideCloud = false;
+      } else if (insideCloud && density <= 0.004) {
+        insideCloud = false;
+      }
       travel += baseStep * stride;
     }
     for (int k = 0; k < 6; k++) {
