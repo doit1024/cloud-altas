@@ -76,18 +76,17 @@
   }
 
   float cumulonimbusEnvelope(vec3 p) {
-    float column = sphere(p, vec3(0.04, -0.08, 0.0), 0.74);
-    column = smoothUnion(column, sphere(p, vec3(-0.22, 0.48, 0.08), 0.58), 0.40);
-    column = smoothUnion(column, sphere(p, vec3(0.20, 0.98, -0.05), 0.52), 0.38);
-    column = smoothUnion(column, sphere(p, vec3(-0.02, 1.42, 0.04), 0.46), 0.36);
-    column = smoothUnion(column, sphere(p, vec3(0.12, 1.76, 0.0), 0.40), 0.32);
-    float anvil = ellipsoid(p, vec3(0.10, 2.02, 0.0), vec3(1.68, 0.40, 0.92));
-    anvil = smoothUnion(anvil, sphere(p, vec3(-0.78, 1.90, 0.12), 0.44), 0.34);
-    anvil = smoothUnion(anvil, sphere(p, vec3(0.92, 1.86, -0.08), 0.40), 0.32);
-    float base = ellipsoid(p, vec3(-0.12, -0.58, 0.0), vec3(1.58, 0.50, 1.08));
-    base = smoothUnion(base, sphere(p, vec3(0.82, -0.32, 0.14), 0.52), 0.38);
-    base = smoothUnion(base, sphere(p, vec3(-0.92, -0.40, -0.10), 0.48), 0.36);
-    return smoothUnion(smoothUnion(column, anvil, 0.42), base, 0.48);
+    float column = sphere(p, vec3(0.02, -0.05, 0.0), 0.98);
+    column = smoothUnion(column, sphere(p, vec3(-0.08, 0.62, 0.04), 0.86), 0.50);
+    column = smoothUnion(column, sphere(p, vec3(0.10, 1.18, -0.02), 0.78), 0.48);
+    column = smoothUnion(column, sphere(p, vec3(-0.02, 1.62, 0.02), 0.70), 0.46);
+    float anvil = ellipsoid(p, vec3(0.08, 2.02, 0.0), vec3(1.72, 0.42, 0.94));
+    anvil = smoothUnion(anvil, sphere(p, vec3(-0.72, 1.92, 0.10), 0.52), 0.40);
+    anvil = smoothUnion(anvil, sphere(p, vec3(0.86, 1.88, -0.08), 0.48), 0.38);
+    float base = ellipsoid(p, vec3(-0.10, -0.62, 0.0), vec3(1.70, 0.55, 1.15));
+    base = smoothUnion(base, sphere(p, vec3(0.78, -0.28, 0.12), 0.62), 0.44);
+    base = smoothUnion(base, sphere(p, vec3(-0.88, -0.36, -0.08), 0.58), 0.42);
+    return smoothUnion(smoothUnion(column, anvil, 0.52), base, 0.55);
   }
 
   float cloudEnvelope(vec3 p) {
