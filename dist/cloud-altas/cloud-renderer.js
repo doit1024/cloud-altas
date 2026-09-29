@@ -44,6 +44,51 @@
     return 1.0 - length((p - center) / radii);
   }
 
+  float sphere(vec3 p, vec3 center, float radius) {
+    return 1.0 - length(p - center) / max(radius, 0.001);
+  }
+
+  // Positive-inside fields. blend is in the same units as the field, not world distance.
+  float smoothUnion(float a, float b, float blend) {
+    float h = clamp(0.5 + 0.5 * (a - b) / blend, 0.0, 1.0);
+    return mix(b, a, h) + blend * h * (1.0 - h);
+  }
+
+  float stratocumulusEnvelope(vec3 p) {
+    float field = sphere(p, vec3(-1.55, -0.02, 0.06), 0.70);
+    field = smoothUnion(field, sphere(p, vec3(-0.72, 0.20, -0.14), 0.62), 0.40);
+    field = smoothUnion(field, sphere(p, vec3(0.12, 0.04, 0.16), 0.74), 0.44);
+    field = smoothUnion(field, sphere(p, vec3(0.92, 0.24, -0.06), 0.60), 0.40);
+    field = smoothUnion(field, sphere(p, vec3(1.62, 0.00, 0.12), 0.66), 0.42);
+    field = smoothUnion(field, sphere(p, vec3(-0.28, 0.52, 0.04), 0.48), 0.34);
+    field = smoothUnion(field, sphere(p, vec3(0.62, 0.50, 0.16), 0.46), 0.32);
+    return min(field, p.y + 0.92);
+  }
+
+  float cumulusEnvelope(vec3 p) {
+    float field = sphere(p, vec3(0.02, -0.12, 0.0), 0.86);
+    field = smoothUnion(field, sphere(p, vec3(-0.58, 0.16, 0.12), 0.58), 0.38);
+    field = smoothUnion(field, sphere(p, vec3(0.60, 0.12, -0.10), 0.54), 0.38);
+    field = smoothUnion(field, sphere(p, vec3(0.06, 0.52, -0.02), 0.52), 0.36);
+    field = smoothUnion(field, sphere(p, vec3(-0.24, 0.92, 0.10), 0.40), 0.32);
+    field = smoothUnion(field, sphere(p, vec3(0.34, 0.84, -0.12), 0.36), 0.30);
+    return min(field, p.y + 0.82);
+  }
+
+  float cumulonimbusEnvelope(vec3 p) {
+    float column = sphere(p, vec3(0.02, -0.05, 0.0), 0.98);
+    column = smoothUnion(column, sphere(p, vec3(-0.08, 0.62, 0.04), 0.86), 0.50);
+    column = smoothUnion(column, sphere(p, vec3(0.10, 1.18, -0.02), 0.78), 0.48);
+    column = smoothUnion(column, sphere(p, vec3(-0.02, 1.62, 0.02), 0.70), 0.46);
+    float anvil = ellipsoid(p, vec3(0.08, 2.02, 0.0), vec3(1.72, 0.42, 0.94));
+    anvil = smoothUnion(anvil, sphere(p, vec3(-0.72, 1.92, 0.10), 0.52), 0.40);
+    anvil = smoothUnion(anvil, sphere(p, vec3(0.86, 1.88, -0.08), 0.48), 0.38);
+    float base = ellipsoid(p, vec3(-0.10, -0.62, 0.0), vec3(1.70, 0.55, 1.15));
+    base = smoothUnion(base, sphere(p, vec3(0.78, -0.28, 0.12), 0.62), 0.44);
+    base = smoothUnion(base, sphere(p, vec3(-0.88, -0.36, -0.08), 0.58), 0.42);
+    return smoothUnion(smoothUnion(column, anvil, 0.52), base, 0.55);
+  }
+
   float cloudEnvelope(vec3 p) {
     float envelope = -2.0;
 
@@ -74,43 +119,35 @@
       envelope -= max(abs(p.z) - 2.30, 0.0) * 0.14;
       envelope -= max(abs(p.x) - 3.45, 0.0) * 0.10;
     } else if (cloudType < 5.5) {
-      envelope = max(envelope, ellipsoid(p, vec3(-1.62, -0.16, -0.04), vec3(1.82, 0.80, 1.30)));
-      envelope = max(envelope, ellipsoid(p, vec3(-0.30, 0.10, 0.02), vec3(1.76, 1.06, 1.38)));
-      envelope = max(envelope, ellipsoid(p, vec3(1.34, -0.12, 0.08), vec3(1.72, 0.84, 1.26)));
-      envelope = max(envelope, ellipsoid(p, vec3(-0.72, 0.70, -0.06), vec3(1.18, 0.90, 1.02)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.75, 0.62, 0.10), vec3(1.12, 0.84, 0.98)));
-      envelope = min(envelope, p.y + 1.02);
+      envelope = stratocumulusEnvelope(p);
     } else if (cloudType < 6.5) {
-      envelope = max(envelope, ellipsoid(p, vec3(-0.92, -0.30, 0.0), vec3(1.22, 0.80, 1.08)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.20, -0.04, 0.0), vec3(1.56, 1.18, 1.24)));
-      envelope = max(envelope, ellipsoid(p, vec3(1.10, -0.28, 0.08), vec3(1.06, 0.78, 0.94)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.08, 0.82, -0.05), vec3(1.00, 1.02, 0.92)));
-      envelope = min(envelope, p.y + 0.96);
+      envelope = cumulusEnvelope(p);
     } else {
-      envelope = max(envelope, ellipsoid(p, vec3(-0.30, -0.62, 0.0), vec3(1.82, 0.72, 1.28)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.20, 0.08, 0.0), vec3(1.44, 1.34, 1.08)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.02, 1.16, 0.0), vec3(1.12, 1.22, 0.90)));
-      envelope = max(envelope, ellipsoid(p, vec3(0.16, 2.02, 0.0), vec3(1.72, 0.42, 0.94)));
+      envelope = cumulonimbusEnvelope(p);
     }
 
     return envelope;
   }
 
-  float densityAt(vec3 p) {
-    float envelope = cloudEnvelope(p);
+  float cloudDensity(vec3 p, out float envelope) {
+    envelope = cloudEnvelope(p);
     if (envelope < -0.48) return 0.0;
 
     vec3 wind = vec3(time * 0.0115, time * 0.0018, time * 0.0009);
     vec3 uvw = fract(p * 0.285 + wind + vec3(0.37, 0.61, 0.19));
     vec3 coarse = texture(noiseVolume, uvw).rgb;
-    vec3 fine = texture(noiseVolume, fract(uvw * 2.37 + vec3(0.17, 0.43, 0.29))).rgb;
 
     float heightBlend = smoothstep(-0.65, 1.45, p.y);
     float perlinWorley = mix(coarse.r, 1.0 - coarse.r, heightBlend * 0.22);
-    float erosion = coarse.g * 0.58 + fine.b * 0.42;
-    float edgeNoise = (perlinWorley - 0.50) * 1.34;
-    edgeNoise += (coarse.g - 0.50) * 0.56;
-    edgeNoise += (fine.b - 0.50) * 0.32;
+    float coarseEdge = (perlinWorley - 0.50) * 1.34 + (coarse.g - 0.50) * 0.56;
+    // Fine noise only shapes the shell. Deep inside uses the mean so the core stays smooth.
+    float shell = 1.0 - smoothstep(0.04, 0.40, envelope);
+    float fineB = 0.50;
+    if (shell > 0.04) {
+      fineB = mix(0.50, texture(noiseVolume, fract(uvw * 2.37 + vec3(0.17, 0.43, 0.29))).b, shell);
+    }
+    float erosion = coarse.g * 0.58 + fineB * 0.42;
+    float edgeNoise = coarseEdge + (fineB - 0.50) * 0.32;
     float shaped = envelope * 0.58 + edgeNoise;
     shaped -= (1.0 - erosion) * 0.09;
 
@@ -131,19 +168,23 @@
   }
 
   float cloudPhase(float cosTheta) {
-    return mix(henyeyGreenstein(0.62, cosTheta), henyeyGreenstein(-0.26, cosTheta), 0.22);
+    float sharp = henyeyGreenstein(0.74, cosTheta);
+    float broad = henyeyGreenstein(0.30, cosTheta);
+    float back = henyeyGreenstein(-0.24, cosTheta);
+    return mix(mix(sharp, broad, 0.38), back, 0.16);
   }
 
   float lightTransmittance(vec3 p, vec3 lightDirection) {
     float opticalDepth = 0.0;
-    float lightStep = 0.34;
+    float lightSteps[4] = float[4](0.10, 0.18, 0.36, 0.72);
     for (int i = 0; i < 4; i++) {
-      p += lightDirection * lightStep;
-      opticalDepth += densityAt(p) * lightStep;
+      float ignored = 0.0;
+      p += lightDirection * lightSteps[i];
+      opticalDepth += cloudDensity(p, ignored) * lightSteps[i];
     }
     float primary = exp(-opticalDepth * 2.75);
-    float secondary = exp(-opticalDepth * 0.72) * 0.30;
-    float tertiary = exp(-opticalDepth * 0.18) * 0.10;
+    float secondary = exp(-opticalDepth * 0.96) * 0.34;
+    float tertiary = exp(-opticalDepth * 0.33) * 0.14;
     return primary + secondary + tertiary;
   }
 
@@ -187,29 +228,32 @@
     float transmittance = 1.0;
     vec3 accumulated = vec3(0.0);
     bool insideCloud = false;
-    float depthMark[6];
-    float span = max(farDistance - nearDistance, 0.001);
-    for (int k = 0; k < 6; k++) depthMark[k] = 1.0;
+    float markTravel[24];
+    float markTransmit[24];
     int markCount = 0;
-
     for (int i = 0; i < 56; i++) {
       if (travel > farDistance || transmittance < 0.018) break;
-      for (int k = 0; k < 6; k++) {
-        if (markCount >= 6) break;
-        float mark = nearDistance + span * float(markCount) / 5.0;
-        if (travel + baseStep < mark) break;
-        depthMark[markCount] = transmittance;
-        markCount++;
-      }
 
       vec3 samplePosition = rayOrigin + rayDirection * travel;
       samplePosition.z *= 0.86;
-      float density = densityAt(samplePosition);
+      float envelope = -2.0;
+      float density = cloudDensity(samplePosition, envelope);
+
+      if (markCount < 24 && envelope > -0.75) {
+        bool record = markCount == 0;
+        if (!record) record = travel - markTravel[markCount - 1] > 0.16;
+        if (record) {
+          markTravel[markCount] = travel;
+          markTransmit[markCount] = transmittance;
+          markCount++;
+        }
+      }
 
       if (density > 0.008) {
         insideCloud = true;
         float lightVisibility = lightTransmittance(samplePosition, lightDirection);
-        float localOcclusion = densityAt(samplePosition + lightDirection * 0.14);
+        float ignored = 0.0;
+        float localOcclusion = cloudDensity(samplePosition + lightDirection * 0.14, ignored);
         float surfaceLight = mix(0.52, 1.18, exp(-localOcclusion * 2.2));
         float powder = 1.0 - exp(-density * 2.6);
         float silver = pow(clamp(1.0 - lightVisibility, 0.0, 1.0), 0.45) * phase;
@@ -230,11 +274,12 @@
             for (int j = 1; j <= 2; j++) {
               float lightStride = 0.18 * float(j);
               walked += lightStride;
-              optical += densityAt(samplePosition + lightStep * min(walked, reach)) * lightStride;
+              float lampIgnored = 0.0;
+              optical += cloudDensity(samplePosition + lightStep * min(walked, reach), lampIgnored) * lightStride;
             }
             lit += bulb.w * exp(-optical * 2.04) / (radius2 + 0.18);
           }
-          lighting += flashColor * flash * 9.0 * lit;
+          lighting += flashColor * flash * 13.0 * lit;
         }
 
         float sampleAlpha = 1.0 - exp(-density * baseStep * 2.04);
@@ -243,13 +288,14 @@
       }
 
       float stride = insideCloud ? 1.0 : (density > 0.0 ? 1.35 : 2.15);
-      if (insideCloud && density <= 0.004) insideCloud = false;
+      if (envelope < -0.48) {
+        float farOutside = -envelope - 0.48;
+        stride = clamp(stride + farOutside * 0.65 / max(baseStep, 0.02), stride, 4.2);
+        insideCloud = false;
+      } else if (insideCloud && density <= 0.004) {
+        insideCloud = false;
+      }
       travel += baseStep * stride;
-    }
-    for (int k = 0; k < 6; k++) {
-      if (markCount >= 6) break;
-      depthMark[markCount] = transmittance;
-      markCount++;
     }
 
     float opacity = 1.0 - transmittance;
@@ -289,12 +335,20 @@
         float rayTravel = max((directionDot * along - originDot) / directionLength2, 0.0);
         float distanceToBolt = length(offset + flatDirection * rayTravel - segment * along);
         float occlusion = 1.0;
-        if (rayTravel > nearDistance && span > 0.0) {
-          float depth = clamp((rayTravel - nearDistance) / span, 0.0, 1.0) * 5.0;
-          int bin = int(min(depth, 4.0));
-          occlusion = mix(depthMark[bin], depthMark[bin + 1], fract(depth));
+        if (markCount > 0 && rayTravel > markTravel[0]) {
+          occlusion = markTransmit[markCount - 1];
+          for (int bin = 0; bin < 23; bin++) {
+            if (bin + 1 >= markCount) break;
+            if (rayTravel <= markTravel[bin + 1]) {
+              float binSpan = max(markTravel[bin + 1] - markTravel[bin], 1e-4);
+              float depth = clamp((rayTravel - markTravel[bin]) / binSpan, 0.0, 1.0);
+              occlusion = mix(markTransmit[bin], markTransmit[bin + 1], depth);
+              break;
+            }
+          }
         }
-        brightness *= occlusion;
+        // Transmittance in front of this segment. Deep channel stays dim; the part that has left the cloud stays bright.
+        brightness *= pow(clamp(occlusion, 0.0, 1.0), 0.85);
         float pixelWidth = rayTravel * (2.0 / 1.74) / resolution.y;
         float edge = max(radius * 0.30, pixelWidth * 0.85);
         float normalized = distanceToBolt / radius;
@@ -310,15 +364,14 @@
       + vec3(0.56, 0.60, 1.0) * 0.22 * bloomMask) * flash;
     float boltPeak = max(bolt.r, max(bolt.g, bolt.b));
     vec3 boltColor = bolt / (1.0 + boltPeak * 0.18);
-    float coreA = clamp(coreMask, 0.0, 1.0) * flashCover;
     float boltCover = clamp((coreMask * 0.95 + glowMask * 0.42 + bloomMask * 0.18) * flashCover, 0.0, 1.0);
     vec3 veil = flashColor * flash * 0.035 * clamp(glowMask + bloomMask, 0.0, 1.0);
     if (cloudAlpha < 0.004 && boltCover < 0.015) {
       fragColor = vec4(0.0);
       return;
     }
-    vec3 rgb = cloudRgb * (1.0 - coreA) + boltColor + veil;
-    float alpha = min(1.0, cloudAlpha * (1.0 - coreA) + boltCover);
+    vec3 rgb = cloudRgb + boltColor + veil;
+    float alpha = min(1.0, cloudAlpha + boltCover);
     fragColor = vec4(rgb, alpha);
   }
   `;
@@ -429,13 +482,13 @@
     fall: 0.3,
   };
   const BOLT_PROFILES = {
-    0: { x: [0.45, 1.55], y: [0.5, 0.78], z: [-0.28, 0.28], scale: 0.45 },
-    2: { x: [0.2, 0.85], y: [0.08, 0.42], z: [-0.32, 0.32], scale: 0.55 },
-    3: { x: [0.45, 1.5], y: [0.2, 0.42], z: [-0.4, 0.4], scale: 0.5 },
-    4: { x: [0.3, 1.15], y: [0.05, 0.5], z: [-0.4, 0.4], scale: 0.72 },
-    5: { x: [0.3, 1.1], y: [0.28, 0.82], z: [-0.35, 0.35], scale: 0.82 },
-    6: { x: [0.22, 0.82], y: [0.28, 0.92], z: [-0.32, 0.32], scale: 0.84 },
-    7: { x: [0.15, 0.55], y: [1.15, 1.95], z: [-0.35, 0.35], scale: 1 },
+    0: { x: [0.15, 1.35], y: [0.58, 0.78], z: [-0.10, -0.02], scale: 0.42 },
+    2: { x: [-0.45, 0.65], y: [0.06, 0.32], z: [-0.24, -0.04], scale: 0.5 },
+    3: { x: [-0.55, 0.7], y: [0.24, 0.36], z: [-0.55, -0.12], scale: 0.48 },
+    4: { x: [-0.4, 0.7], y: [-0.35, 0.05], z: [-0.42, -0.08], scale: 0.66 },
+    5: { x: [-0.35, 0.55], y: [0.02, 0.42], z: [-0.30, -0.06], scale: 0.72 },
+    6: { x: [-0.22, 0.28], y: [0.08, 0.62], z: [-0.34, -0.08], scale: 0.7 },
+    7: { x: [-0.16, 0.2], y: [0.85, 1.55], z: [-0.46, -0.14], scale: 0.92 },
   };
 
   function uniformRange(min, max) {
@@ -463,8 +516,8 @@
       for (let index = 0; index < steps && roomLeft() > 0; index++) {
         const bend = Math.random() < geometry.hardProbability ? geometry.kink * geometry.hook : geometry.kink;
         const leader = index < leaderSteps;
-        const fall = leader ? 0.04 : geometry.fall;
-        const verticalCap = leader ? -0.08 : -0.5;
+        const fall = leader ? 0.2 : geometry.fall;
+        const verticalCap = leader ? -0.42 : -0.55;
         heading = normalize3([
           heading[0] * geometry.persist + uniformRange(-bend, bend),
           Math.min(heading[1] * geometry.persist - fall, verticalCap),
@@ -492,16 +545,15 @@
 
     function channel(channelBudget, amplitude, branchCounts) {
       budget = Math.min(limit, segments.length + channelBudget);
-      const side = Math.random() < 0.5 ? -1 : 1;
       const origin = [
-        side * uniformRange(profile.x[0], profile.x[1]),
+        uniformRange(profile.x[0], profile.x[1]),
         uniformRange(profile.y[0], profile.y[1]),
         uniformRange(profile.z[0], profile.z[1]),
       ];
       const heading = normalize3([
-        side * uniformRange(0.8, 1.1),
-        uniformRange(-0.22, -0.05),
-        uniformRange(-0.35, 0.35),
+        uniformRange(-0.28, 0.28),
+        -uniformRange(0.75, 1.05),
+        uniformRange(0.14, 0.5),
       ]);
       const levels = [walk(origin, heading, 0, amplitude, Math.round(geometry.steps[0] * amplitude), Math.round(uniformRange(2, 4)))];
       if (amplitude > 0.8 && levels[0].length > 6 && Math.random() < 0.6) {
@@ -527,9 +579,9 @@
           const parent = parents.splice(Math.floor(Math.random() * parents.length), 1)[0];
           const branchSide = Math.random() < 0.5 ? -1 : 1;
           const branchHeading = normalize3([
-            parent.dir[0] + branchSide * uniformRange(0.55, 1.3),
-            parent.dir[1] * uniformRange(0.35, 0.85),
-            parent.dir[2] + uniformRange(-0.9, 0.9),
+            parent.dir[0] + branchSide * uniformRange(0.22, 0.62),
+            parent.dir[1] * uniformRange(0.55, 0.95),
+            parent.dir[2] + uniformRange(-0.12, 0.32),
           ]);
           children.push(...walk(
             parent.p,
@@ -704,7 +756,15 @@
             segmentEnd[offset + 3] = segment.radius;
           }
         }
-        const origin = strike ? strike.origin : [0, 0, 0];
+        const trunk = strike ? strike.segments.filter((segment) => !segment.branch) : [];
+        const source = trunk.length ? trunk : (strike ? strike.segments : []);
+        const alongTrunk = (t) => {
+          if (!source.length) return [0, 0, 0];
+          const index = Math.min(source.length - 1, Math.max(0, Math.round((source.length - 1) * t)));
+          return source[index].a;
+        };
+        const lightA = alongTrunk(0.18);
+        const lightB = alongTrunk(0.52);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.useProgram(program);
@@ -725,12 +785,12 @@
         gl.uniform1i(uniforms.segCount, segmentCount);
         gl.uniform4f(
           uniforms.light0,
-          origin[0] * 0.45,
-          origin[1] + 0.05,
-          origin[2] * 0.45 * 0.86,
+          lightA[0],
+          lightA[1],
+          (lightA[2] - 0.06) * 0.86,
           strike ? 1 : 0,
         );
-        gl.uniform4f(uniforms.light1, origin[0], origin[1], origin[2] * 0.86, strike ? 0.75 : 0);
+        gl.uniform4f(uniforms.light1, lightB[0], lightB[1], (lightB[2] - 0.04) * 0.86, strike ? 0.72 : 0);
         if (segmentCount > 0) {
           gl.uniform4fv(uniforms["segA[0]"], segmentStart);
           gl.uniform4fv(uniforms["segB[0]"], segmentEnd);
