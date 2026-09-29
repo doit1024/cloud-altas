@@ -228,25 +228,26 @@
     float transmittance = 1.0;
     vec3 accumulated = vec3(0.0);
     bool insideCloud = false;
-    float depthMark[6];
-    float span = max(farDistance - nearDistance, 0.001);
-    for (int k = 0; k < 6; k++) depthMark[k] = 1.0;
+    float markTravel[24];
+    float markTransmit[24];
     int markCount = 0;
-
     for (int i = 0; i < 56; i++) {
       if (travel > farDistance || transmittance < 0.018) break;
-      for (int k = 0; k < 6; k++) {
-        if (markCount >= 6) break;
-        float mark = nearDistance + span * float(markCount) / 5.0;
-        if (travel + baseStep < mark) break;
-        depthMark[markCount] = transmittance;
-        markCount++;
-      }
 
       vec3 samplePosition = rayOrigin + rayDirection * travel;
       samplePosition.z *= 0.86;
       float envelope = -2.0;
       float density = cloudDensity(samplePosition, envelope);
+
+      if (markCount < 24 && envelope > -0.75) {
+        bool record = markCount == 0;
+        if (!record) record = travel - markTravel[markCount - 1] > 0.16;
+        if (record) {
+          markTravel[markCount] = travel;
+          markTransmit[markCount] = transmittance;
+          markCount++;
+        }
+      }
 
       if (density > 0.008) {
         insideCloud = true;
@@ -278,7 +279,7 @@
             }
             lit += bulb.w * exp(-optical * 2.04) / (radius2 + 0.18);
           }
-          lighting += flashColor * flash * 9.0 * lit;
+          lighting += flashColor * flash * 13.0 * lit;
         }
 
         float sampleAlpha = 1.0 - exp(-density * baseStep * 2.04);
@@ -295,11 +296,6 @@
         insideCloud = false;
       }
       travel += baseStep * stride;
-    }
-    for (int k = 0; k < 6; k++) {
-      if (markCount >= 6) break;
-      depthMark[markCount] = transmittance;
-      markCount++;
     }
 
     float opacity = 1.0 - transmittance;
@@ -339,12 +335,20 @@
         float rayTravel = max((directionDot * along - originDot) / directionLength2, 0.0);
         float distanceToBolt = length(offset + flatDirection * rayTravel - segment * along);
         float occlusion = 1.0;
-        if (rayTravel > nearDistance && span > 0.0) {
-          float depth = clamp((rayTravel - nearDistance) / span, 0.0, 1.0) * 5.0;
-          int bin = int(min(depth, 4.0));
-          occlusion = mix(depthMark[bin], depthMark[bin + 1], fract(depth));
+        if (markCount > 0 && rayTravel > markTravel[0]) {
+          occlusion = markTransmit[markCount - 1];
+          for (int bin = 0; bin < 23; bin++) {
+            if (bin + 1 >= markCount) break;
+            if (rayTravel <= markTravel[bin + 1]) {
+              float binSpan = max(markTravel[bin + 1] - markTravel[bin], 1e-4);
+              float depth = clamp((rayTravel - markTravel[bin]) / binSpan, 0.0, 1.0);
+              occlusion = mix(markTransmit[bin], markTransmit[bin + 1], depth);
+              break;
+            }
+          }
         }
-        brightness *= occlusion;
+        // Transmittance in front of this segment. Deep channel stays dim; the part that has left the cloud stays bright.
+        brightness *= pow(clamp(occlusion, 0.0, 1.0), 0.85);
         float pixelWidth = rayTravel * (2.0 / 1.74) / resolution.y;
         float edge = max(radius * 0.30, pixelWidth * 0.85);
         float normalized = distanceToBolt / radius;
@@ -360,15 +364,14 @@
       + vec3(0.56, 0.60, 1.0) * 0.22 * bloomMask) * flash;
     float boltPeak = max(bolt.r, max(bolt.g, bolt.b));
     vec3 boltColor = bolt / (1.0 + boltPeak * 0.18);
-    float coreA = clamp(coreMask, 0.0, 1.0) * flashCover;
     float boltCover = clamp((coreMask * 0.95 + glowMask * 0.42 + bloomMask * 0.18) * flashCover, 0.0, 1.0);
     vec3 veil = flashColor * flash * 0.035 * clamp(glowMask + bloomMask, 0.0, 1.0);
     if (cloudAlpha < 0.004 && boltCover < 0.015) {
       fragColor = vec4(0.0);
       return;
     }
-    vec3 rgb = cloudRgb * (1.0 - coreA) + boltColor + veil;
-    float alpha = min(1.0, cloudAlpha * (1.0 - coreA) + boltCover);
+    vec3 rgb = cloudRgb + boltColor + veil;
+    float alpha = min(1.0, cloudAlpha + boltCover);
     fragColor = vec4(rgb, alpha);
   }
   `;
@@ -479,13 +482,13 @@
     fall: 0.3,
   };
   const BOLT_PROFILES = {
-    0: { x: [0.45, 1.55], y: [0.5, 0.78], z: [-0.28, 0.28], scale: 0.45 },
-    2: { x: [0.2, 0.85], y: [0.08, 0.42], z: [-0.32, 0.32], scale: 0.55 },
-    3: { x: [0.45, 1.5], y: [0.2, 0.42], z: [-0.4, 0.4], scale: 0.5 },
-    4: { x: [0.3, 1.15], y: [0.05, 0.5], z: [-0.4, 0.4], scale: 0.72 },
-    5: { x: [0.3, 1.1], y: [0.28, 0.82], z: [-0.35, 0.35], scale: 0.82 },
-    6: { x: [0.22, 0.82], y: [0.28, 0.92], z: [-0.32, 0.32], scale: 0.84 },
-    7: { x: [0.15, 0.55], y: [1.15, 1.95], z: [-0.35, 0.35], scale: 1 },
+    0: { x: [0.15, 1.35], y: [0.58, 0.78], z: [-0.10, -0.02], scale: 0.42 },
+    2: { x: [-0.45, 0.65], y: [0.06, 0.32], z: [-0.24, -0.04], scale: 0.5 },
+    3: { x: [-0.55, 0.7], y: [0.24, 0.36], z: [-0.55, -0.12], scale: 0.48 },
+    4: { x: [-0.4, 0.7], y: [-0.35, 0.05], z: [-0.42, -0.08], scale: 0.66 },
+    5: { x: [-0.35, 0.55], y: [0.02, 0.42], z: [-0.30, -0.06], scale: 0.72 },
+    6: { x: [-0.22, 0.28], y: [0.08, 0.62], z: [-0.34, -0.08], scale: 0.7 },
+    7: { x: [-0.16, 0.2], y: [0.85, 1.55], z: [-0.46, -0.14], scale: 0.92 },
   };
 
   function uniformRange(min, max) {
@@ -513,8 +516,8 @@
       for (let index = 0; index < steps && roomLeft() > 0; index++) {
         const bend = Math.random() < geometry.hardProbability ? geometry.kink * geometry.hook : geometry.kink;
         const leader = index < leaderSteps;
-        const fall = leader ? 0.04 : geometry.fall;
-        const verticalCap = leader ? -0.08 : -0.5;
+        const fall = leader ? 0.2 : geometry.fall;
+        const verticalCap = leader ? -0.42 : -0.55;
         heading = normalize3([
           heading[0] * geometry.persist + uniformRange(-bend, bend),
           Math.min(heading[1] * geometry.persist - fall, verticalCap),
@@ -542,16 +545,15 @@
 
     function channel(channelBudget, amplitude, branchCounts) {
       budget = Math.min(limit, segments.length + channelBudget);
-      const side = Math.random() < 0.5 ? -1 : 1;
       const origin = [
-        side * uniformRange(profile.x[0], profile.x[1]),
+        uniformRange(profile.x[0], profile.x[1]),
         uniformRange(profile.y[0], profile.y[1]),
         uniformRange(profile.z[0], profile.z[1]),
       ];
       const heading = normalize3([
-        side * uniformRange(0.8, 1.1),
-        uniformRange(-0.22, -0.05),
-        uniformRange(-0.35, 0.35),
+        uniformRange(-0.28, 0.28),
+        -uniformRange(0.75, 1.05),
+        uniformRange(0.14, 0.5),
       ]);
       const levels = [walk(origin, heading, 0, amplitude, Math.round(geometry.steps[0] * amplitude), Math.round(uniformRange(2, 4)))];
       if (amplitude > 0.8 && levels[0].length > 6 && Math.random() < 0.6) {
@@ -577,9 +579,9 @@
           const parent = parents.splice(Math.floor(Math.random() * parents.length), 1)[0];
           const branchSide = Math.random() < 0.5 ? -1 : 1;
           const branchHeading = normalize3([
-            parent.dir[0] + branchSide * uniformRange(0.55, 1.3),
-            parent.dir[1] * uniformRange(0.35, 0.85),
-            parent.dir[2] + uniformRange(-0.9, 0.9),
+            parent.dir[0] + branchSide * uniformRange(0.22, 0.62),
+            parent.dir[1] * uniformRange(0.55, 0.95),
+            parent.dir[2] + uniformRange(-0.12, 0.32),
           ]);
           children.push(...walk(
             parent.p,
@@ -754,7 +756,15 @@
             segmentEnd[offset + 3] = segment.radius;
           }
         }
-        const origin = strike ? strike.origin : [0, 0, 0];
+        const trunk = strike ? strike.segments.filter((segment) => !segment.branch) : [];
+        const source = trunk.length ? trunk : (strike ? strike.segments : []);
+        const alongTrunk = (t) => {
+          if (!source.length) return [0, 0, 0];
+          const index = Math.min(source.length - 1, Math.max(0, Math.round((source.length - 1) * t)));
+          return source[index].a;
+        };
+        const lightA = alongTrunk(0.18);
+        const lightB = alongTrunk(0.52);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.useProgram(program);
@@ -775,12 +785,12 @@
         gl.uniform1i(uniforms.segCount, segmentCount);
         gl.uniform4f(
           uniforms.light0,
-          origin[0] * 0.45,
-          origin[1] + 0.05,
-          origin[2] * 0.45 * 0.86,
+          lightA[0],
+          lightA[1],
+          (lightA[2] - 0.06) * 0.86,
           strike ? 1 : 0,
         );
-        gl.uniform4f(uniforms.light1, origin[0], origin[1], origin[2] * 0.86, strike ? 0.75 : 0);
+        gl.uniform4f(uniforms.light1, lightB[0], lightB[1], (lightB[2] - 0.04) * 0.86, strike ? 0.72 : 0);
         if (segmentCount > 0) {
           gl.uniform4fv(uniforms["segA[0]"], segmentStart);
           gl.uniform4fv(uniforms["segB[0]"], segmentEnd);
